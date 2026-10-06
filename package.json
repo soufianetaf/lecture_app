@@ -1,8 +1,12 @@
 {
   "name": "lecture",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Lire des livres PDF, EPUB et TXT en français et en anglais : suivi, surlignage, dictionnaire et vocabulaire.",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
