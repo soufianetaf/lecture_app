@@ -75,12 +75,88 @@ export interface EpubLocationsCache {
   locations: string;
 }
 
+export type HighlightColor = 'yellow' | 'green' | 'pink' | 'blue';
+
+/** Rectangle en proportion de la page PDF (0 à 1) : indépendant du zoom. */
+export interface NormalizedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Emplacement d'un surlignage, propre à chaque format. */
+export type HighlightAnchor =
+  { format: 'epub'; cfiRange: string } | { format: 'pdf'; page: number; rects: readonly NormalizedRect[] };
+
+export interface Highlight {
+  id: string;
+  bookId: string;
+  anchor: HighlightAnchor;
+  /** Texte surligné, pour la liste et l'export. */
+  text: string;
+  color: HighlightColor;
+  note?: string;
+  /** Où se trouve le passage (chapitre, page), pour la liste. */
+  label?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Résultat de dictionnaire ou de traduction mis en cache (`value: null` = introuvable). */
+export interface DictCacheEntry {
+  key: string;
+  value: unknown;
+  expiresAt: number;
+}
+
+export type WordStatus = 'new' | 'learning' | 'known';
+
+/** État de révision espacée d'un mot (algorithme de type SM-2, comme Anki). */
+export interface ReviewState {
+  /** Date à laquelle le mot doit être révisé. */
+  dueAt: number;
+  /** Intervalle actuel entre deux révisions, en jours (0 = à revoir dans la séance). */
+  intervalDays: number;
+  /** Facilité : multiplicateur de l'intervalle après une bonne réponse. */
+  ease: number;
+  /** Bonnes réponses consécutives. */
+  repetitions: number;
+  /** Nombre d'oublis. */
+  lapses: number;
+  lastReviewedAt?: number;
+}
+
+export interface VocabularyWord extends ReviewState {
+  id: string;
+  /** Clé d'unicité : forme de base en minuscules (un mot n'est enregistré qu'une fois par langue). */
+  key: string;
+  language: 'fr' | 'en';
+  /** Forme rencontrée dans le livre (« ran »). */
+  word: string;
+  /** Forme de base, si différente (« run »). */
+  lemma?: string;
+  translations: string[];
+  definition?: string;
+  /** Phrase du livre où le mot a été rencontré. */
+  context?: string;
+  bookId?: string;
+  /** Gardé en clair : le vocabulaire survit à la suppression du livre. */
+  bookTitle?: string;
+  status: WordStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
 class LectureDB extends Dexie {
   books!: EntityTable<Book, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
   progress!: EntityTable<Progress, 'bookId'>;
   readingSessions!: EntityTable<ReadingSession, 'id'>;
   epubLocations!: EntityTable<EpubLocationsCache, 'bookId'>;
+  highlights!: EntityTable<Highlight, 'id'>;
+  dictCache!: EntityTable<DictCacheEntry, 'key'>;
+  words!: EntityTable<VocabularyWord, 'id'>;
 
   constructor() {
     super('lecture');
@@ -94,6 +170,15 @@ class LectureDB extends Dexie {
       progress: 'bookId, updatedAt',
       readingSessions: '++id, bookId, startedAt',
       epubLocations: 'bookId',
+    });
+    this.version(4).stores({
+      highlights: 'id, bookId, createdAt',
+    });
+    this.version(5).stores({
+      dictCache: 'key, expiresAt',
+    });
+    this.version(6).stores({
+      words: 'id, &[language+key], bookId, status, dueAt, createdAt',
     });
   }
 }

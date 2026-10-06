@@ -1,7 +1,9 @@
-import { forwardRef, useEffect, useEffectEvent, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from 'react';
 import ePub, { type Book as EpubBook, type Contents, type NavItem, type Rendition } from 'epubjs';
-import type { Settings } from '../db/db';
-import { THEME_COLORS, type ReaderHandle, type TocItem, type ViewProps } from './types';
+import type { HighlightColor, Settings } from '../db/db';
+import { cleanSelectionText, colorFill } from '../services/highlights';
+import { enclosingBlock, selectionSentence } from './selectionContext';
+import { THEME_COLORS, type ReaderHandle, type ScreenRect, type TocItem, type ViewProps } from './types';
 
 const STYLE_ID = 'lecture-reader-style';
 
@@ -70,6 +72,24 @@ function toTocItems(items: NavItem[]): TocItem[] {
   }));
 }
 
+/** Styles SVG d'un surlignage epub.js ; en thème sombre, « multiply » le rendrait noir. */
+function highlightStyles(color: HighlightColor, theme: Settings['theme']) {
+  return {
+    fill: colorFill(color),
+    'fill-opacity': theme === 'dark' ? '0.35' : '0.45',
+    'mix-blend-mode': theme === 'dark' ? 'normal' : 'multiply',
+  };
+}
+
+/** Rectangle d'une plage de l'iframe, ramené aux coordonnées de la fenêtre principale. */
+function rangeToScreenRect(range: Range, contents: Contents): ScreenRect {
+  const rect = range.getBoundingClientRect();
+  const frame = contents.window.frameElement?.getBoundingClientRect();
+  const dx = frame?.left ?? 0;
+  const dy = frame?.top ?? 0;
+  return { top: rect.top + dy, bottom: rect.bottom + dy, left: rect.left + dx, right: rect.right + dx };
+}
+
 /** Titre du chapitre dont le fichier correspond à la section affichée. */
 function chapterForHref(toc: TocItem[], href: string): string | undefined {
   for (const item of toc) {
@@ -82,9 +102,11 @@ function chapterForHref(toc: TocItem[], href: string): string | undefined {
 }
 
 const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props, ref) {
-  const { file, settings } = props;
+  const { file, settings, highlights } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const renditionRef = useRef<Rendition>(undefined);
+  // Le rendu affiché, en état pour que l'effet des surlignages se relance à l'ouverture.
+  const [activeRendition, setActiveRendition] = useState<Rendition>();
 
   // Fonctions appelées depuis les effets : elles voient toujours les dernières
   // props sans relancer l'ouverture du livre.
@@ -100,6 +122,8 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
   const onLocationsReady = useEffectEvent((locations: string) => props.onLocationsReady(locations));
   const onError = useEffectEvent((message: string) => props.onError(message));
   const onKey = useEffectEvent((key: string) => props.onKey(key));
+  const onSelection = useEffectEvent((...args: Parameters<ViewProps['onSelection']>) => props.onSelection(...args));
+  const onHighlightClick = useEffectEvent((id: string, rect: ScreenRect) => props.onHighlightClick(id, rect));
 
   useImperativeHandle(
     ref,
@@ -107,6 +131,14 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
       next: () => void renditionRef.current?.next(),
       prev: () => void renditionRef.current?.prev(),
       goTo: (item) => void renditionRef.current?.display(item.target as string),
+      goToAnchor: (anchor) => {
+        if (anchor.format === 'epub') void renditionRef.current?.display(anchor.cfiRange);
+      },
+      clearSelection: () => {
+        for (const contents of (renditionRef.current?.getContents() ?? []) as unknown as Contents[]) {
+          contents.window.getSelection()?.removeAllRanges();
+        }
+      },
     }),
     [],
   );
@@ -116,11 +148,14 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
     let cancelled = false;
     let book: EpubBook | undefined;
 
-    (async () => {
+    const opening = (async () => {
       const buffer = await file.arrayBuffer();
       if (cancelled) return;
       const epub = ePub(buffer);
       book = epub;
+      // On attend l'ouverture, et on abandonne si l'écran a été quitté entre-temps.
+      await epub.opened;
+      if (cancelled) return;
       const rendition = epub.renderTo(containerRef.current!, {
         width: '100%',
         height: '100%',
@@ -149,6 +184,22 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
         emitLocation(location.start);
       });
 
+      // Sélection de texte : epub.js fournit la plage sous forme de CFI.
+      rendition.on('selected', (cfiRange: string, contents: Contents) => {
+        const range = contents.range(cfiRange);
+        const text = cleanSelectionText(range.toString());
+        if (!text) return;
+        const block = enclosingBlock(range.startContainer);
+        onSelection({
+          anchor: { format: 'epub', cfiRange },
+          text,
+          label: lastStart ? chapterForHref(toc, lastStart.href) : undefined,
+          context: block ? selectionSentence(range, block, '') : undefined,
+          rect: rangeToScreenRect(range, contents),
+        });
+      });
+      rendition.on('mousedown', () => onSelection(null));
+
       // Les événements clavier et tactiles se produisent dans l'iframe du livre.
       rendition.on('keydown', (event: KeyboardEvent) => onKey(event.key));
       let touchStartX = 0;
@@ -170,6 +221,7 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
         await rendition.display();
       }
       if (cancelled) return;
+      setActiveRendition(rendition);
       onReady(toc);
 
       // Repères pour calculer l'avancement : depuis le cache, sinon calculés
@@ -191,17 +243,60 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
     return () => {
       cancelled = true;
       renditionRef.current = undefined;
-      book?.destroy();
+      setActiveRendition(undefined);
+      // epub.js plante si on détruit le livre pendant une opération en cours
+      // (démarrage, affichage) : on attend la fin de l'ouverture, qui s'arrête
+      // d'elle-même à la prochaine étape grâce à `cancelled`.
+      void opening.finally(() => book?.destroy());
     };
   }, [file]);
 
+  // Surlignages : on ne redessine que ceux qui ont changé (ajout, couleur, thème).
+  const drawnRef = useRef<{ rendition?: Rendition; marks: Map<string, { cfiRange: string; key: string }> }>({
+    marks: new Map(),
+  });
+  useEffect(() => {
+    const rendition = activeRendition;
+    if (!rendition) return;
+    // Nouveau rendu (autre livre) : les anciennes marques n'existent plus.
+    if (drawnRef.current.rendition !== rendition) drawnRef.current = { rendition, marks: new Map() };
+    const drawn = drawnRef.current.marks;
+    const wanted = new Map(
+      highlights.flatMap((h) =>
+        h.anchor.format === 'epub' ? [[h.id, { highlight: h, cfiRange: h.anchor.cfiRange }] as const] : [],
+      ),
+    );
+
+    for (const [id, mark] of drawn) {
+      const next = wanted.get(id);
+      if (!next || `${next.highlight.color}|${settings.theme}` !== mark.key) {
+        rendition.annotations.remove(mark.cfiRange, 'highlight');
+        drawn.delete(id);
+      }
+    }
+    for (const [id, { highlight, cfiRange }] of wanted) {
+      if (drawn.has(id)) continue;
+      rendition.annotations.highlight(
+        cfiRange,
+        { id },
+        (event: MouseEvent) => {
+          const target = event.currentTarget as Element | null;
+          const rect = target?.getBoundingClientRect();
+          if (rect) onHighlightClick(id, rect);
+        },
+        'lecture-highlight',
+        highlightStyles(highlight.color, settings.theme),
+      );
+      drawn.set(id, { cfiRange, key: `${highlight.color}|${settings.theme}` });
+    }
+  }, [activeRendition, highlights, settings.theme]);
+
   // Thème, police et interligne : mise à jour des chapitres affichés.
   useEffect(() => {
-    const rendition = renditionRef.current;
-    if (!rendition) return;
-    for (const contents of rendition.getContents() as unknown as Contents[]) applyStyle(contents, settings);
-    rendition.themes.fontSize(`${settings.fontSize}%`);
-  }, [settings]);
+    if (!activeRendition) return;
+    for (const contents of activeRendition.getContents() as unknown as Contents[]) applyStyle(contents, settings);
+    activeRendition.themes.fontSize(`${settings.fontSize}%`);
+  }, [activeRendition, settings]);
 
   // Largeur de colonne : epub.js doit recalculer la pagination.
   useEffect(() => {

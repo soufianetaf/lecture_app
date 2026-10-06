@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { db, type Book, type BookLanguage, type Progress } from '../db/db';
 import { deleteBook } from '../services/bookService';
 import { formatDuration, formatPercentage, isFinished } from '../services/progress';
+import { ROUTES } from '../routes';
 import ProgressBar from './ProgressBar';
 
 const LANGUAGE_LABELS: Record<BookLanguage, string> = { fr: 'FR', en: 'EN', unknown: '?' };
@@ -37,7 +38,7 @@ export default function BookCard({ book, progress }: { book: Book; progress?: Pr
   return (
     <article className="group flex flex-col">
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-stone-200 shadow-sm ring-1 ring-stone-900/5 transition group-hover:shadow-md dark:bg-stone-700">
-        <a href={`#/livre/${book.id}`} aria-label={`Lire ${book.title}`} className="block h-full">
+        <a href={ROUTES.reader(book.id)} aria-label={`Lire ${book.title}`} className="block h-full">
           {book.cover ? (
             <BlobImage blob={book.cover} className="h-full w-full object-cover" />
           ) : (
@@ -66,7 +67,7 @@ export default function BookCard({ book, progress }: { book: Book; progress?: Pr
         )}
       </div>
       <h3 className="mt-2 line-clamp-2 text-sm font-medium leading-tight" title={book.title}>
-        <a href={`#/livre/${book.id}`} className="hover:underline">
+        <a href={ROUTES.reader(book.id)} className="hover:underline">
           {book.title}
         </a>
       </h3>
