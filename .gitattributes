@@ -1,0 +1,8 @@
+# Fins de ligne LF partout (cohérent avec Prettier).
+* text=auto eol=lf
+
+# Fichiers binaires : jamais de conversion (les offsets internes des PDF casseraient).
+*.pdf binary
+*.epub binary
+*.png binary
+*.jpg binary
