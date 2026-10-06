@@ -3,7 +3,14 @@ import ePub, { type Book as EpubBook, type Contents, type NavItem, type Renditio
 import type { HighlightColor, Settings } from '../db/db';
 import { cleanSelectionText, colorFill } from '../services/highlights';
 import { enclosingBlock, selectionSentence } from './selectionContext';
-import { THEME_COLORS, type ReaderHandle, type ScreenRect, type TocItem, type ViewProps } from './types';
+import {
+  THEME_COLORS,
+  type ReaderErrorCode,
+  type ReaderHandle,
+  type ScreenRect,
+  type TocItem,
+  type ViewProps,
+} from './types';
 
 const STYLE_ID = 'lecture-reader-style';
 
@@ -111,6 +118,7 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
   // Fonctions appelées depuis les effets : elles voient toujours les dernières
   // props sans relancer l'ouverture du livre.
   const getSettings = useEffectEvent(() => settings);
+  const getTitle = useEffectEvent(() => props.title);
   const getInitialState = useEffectEvent(() => ({
     cfi: props.initialPosition?.format === 'epub' ? props.initialPosition.cfi : undefined,
     cachedLocations: props.cachedLocations,
@@ -120,7 +128,7 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
     props.onLocationChange(...args),
   );
   const onLocationsReady = useEffectEvent((locations: string) => props.onLocationsReady(locations));
-  const onError = useEffectEvent((message: string) => props.onError(message));
+  const onError = useEffectEvent((code: ReaderErrorCode) => props.onError(code));
   const onKey = useEffectEvent((key: string) => props.onKey(key));
   const onSelection = useEffectEvent((...args: Parameters<ViewProps['onSelection']>) => props.onSelection(...args));
   const onHighlightClick = useEffectEvent((id: string, rect: ScreenRect) => props.onHighlightClick(id, rect));
@@ -165,7 +173,11 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
       });
       renditionRef.current = rendition;
 
-      rendition.hooks.content.register((contents: Contents) => applyStyle(contents, getSettings()));
+      rendition.hooks.content.register((contents: Contents) => {
+        applyStyle(contents, getSettings());
+        // Nom accessible de l'iframe créée par epub.js (sinon annoncée « cadre » sans nom).
+        contents.window.frameElement?.setAttribute('title', getTitle());
+      });
       rendition.themes.fontSize(`${getSettings().fontSize}%`);
 
       let toc: TocItem[] = [];
@@ -176,7 +188,7 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
           position: { format: 'epub', cfi: start.cfi },
           percentage: hasLocations ? epub.locations.percentageFromCfi(start.cfi) : undefined,
           chapter: chapterForHref(toc, start.href),
-          label: `Page ${start.displayed.page} / ${start.displayed.total} du chapitre`,
+          page: { current: start.displayed.page, total: start.displayed.total, scope: 'chapter' },
         });
       };
       rendition.on('relocated', (location: { start: EpubLocationStart }) => {
@@ -237,7 +249,7 @@ const EpubView = forwardRef<ReaderHandle, EpubViewProps>(function EpubView(props
     })().catch((error) => {
       if (cancelled) return;
       console.error(error);
-      onError('Impossible d’ouvrir cet EPUB.');
+      onError('openEpub');
     });
 
     return () => {

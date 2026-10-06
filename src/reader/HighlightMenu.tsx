@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Highlight, HighlightColor } from '../db/db';
+import { useI18n } from '../i18n';
 import { HIGHLIGHT_COLORS } from '../services/highlights';
 import type { ScreenRect } from './types';
 
@@ -13,21 +14,25 @@ function menuPosition(rect: ScreenRect, halfWidth: number): CSSProperties {
 }
 
 function ColorButtons({ selected, onPick }: { selected?: HighlightColor; onPick(color: HighlightColor): void }) {
+  const { t } = useI18n();
   return (
-    <div className="flex gap-1.5" role="group" aria-label="Couleur du surlignage">
-      {HIGHLIGHT_COLORS.map((color) => (
-        <button
-          key={color.value}
-          onClick={() => onPick(color.value)}
-          aria-label={`Surligner en ${color.label.toLowerCase()}`}
-          aria-pressed={selected === color.value}
-          title={color.label}
-          className={`h-7 w-7 rounded-full border-2 transition hover:scale-110 ${
-            selected === color.value ? 'border-stone-900 dark:border-white' : 'border-transparent'
-          }`}
-          style={{ background: color.fill }}
-        />
-      ))}
+    <div className="flex gap-1.5" role="group" aria-label={t.highlights.colorGroup}>
+      {HIGHLIGHT_COLORS.map((color) => {
+        const name = t.highlights.colors[color.value];
+        return (
+          <button
+            key={color.value}
+            onClick={() => onPick(color.value)}
+            aria-label={t.highlights.highlightIn(name)}
+            aria-pressed={selected === color.value}
+            title={name}
+            className={`h-7 w-7 rounded-full border-2 transition hover:scale-110 ${
+              selected === color.value ? 'border-stone-900 dark:border-white' : 'border-transparent'
+            }`}
+            style={{ background: color.fill }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -46,21 +51,22 @@ export function SelectionMenu({
   /** Proposé pour un passage de plusieurs mots (un mot seul s'ouvre directement au dictionnaire). */
   onTranslate?(): void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className={`${panelClass} flex items-center gap-2`}
       style={menuPosition(rect, onTranslate ? 120 : 80)}
       role="toolbar"
-      aria-label="Surligner la sélection"
+      aria-label={t.highlights.selectionToolbar}
     >
       <ColorButtons onPick={onPick} />
       {onTranslate && (
         <button
           onClick={onTranslate}
           className="rounded-md border-l border-current/15 px-2 py-1 text-sm hover:bg-current/10"
-          title="Traduire le passage"
+          title={t.highlights.translateTitle}
         >
-          Traduire
+          {t.highlights.translate}
         </button>
       )}
     </div>
@@ -78,6 +84,7 @@ interface EditProps {
 
 /** Menu d'un surlignage existant : couleur, note, suppression. */
 export function HighlightEditMenu({ highlight, rect, onColor, onNote, onDelete, onClose }: EditProps) {
+  const { t } = useI18n();
   const [note, setNote] = useState(highlight.note ?? '');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirty = note.trim() !== (highlight.note ?? '');
@@ -87,20 +94,15 @@ export function HighlightEditMenu({ highlight, rect, onColor, onNote, onDelete, 
   }, [highlight.note]);
 
   return (
-    <div
-      className={`${panelClass} w-72`}
-      style={menuPosition(rect, 144)}
-      role="dialog"
-      aria-label="Modifier le surlignage"
-    >
+    <div className={`${panelClass} w-72`} style={menuPosition(rect, 144)} role="dialog" aria-label={t.highlights.edit}>
       <div className="flex items-center justify-between gap-2 px-1">
         <ColorButtons selected={highlight.color} onPick={onColor} />
         <button
           onClick={onDelete}
-          className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-          title="Supprimer le surlignage"
+          className="rounded-md px-2 py-1 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+          title={t.highlights.deleteTitle}
         >
-          Supprimer
+          {t.common.delete}
         </button>
       </div>
       <textarea
@@ -113,20 +115,21 @@ export function HighlightEditMenu({ highlight, rect, onColor, onNote, onDelete, 
           if (e.key === 'Escape') onClose();
           e.stopPropagation();
         }}
-        placeholder="Ajouter une note…"
+        placeholder={t.highlights.notePlaceholder}
+        aria-label={t.highlights.notePlaceholder}
         rows={3}
         className="mt-2 w-full resize-none rounded-md border border-stone-300 bg-transparent p-2 text-sm dark:border-stone-600"
       />
       <div className="mt-1 flex justify-end gap-2">
         <button onClick={onClose} className="rounded-md px-3 py-1 text-sm hover:bg-current/10">
-          Fermer
+          {t.common.close}
         </button>
         <button
           onClick={() => onNote(note)}
           disabled={!dirty}
-          className="rounded-md bg-amber-600 px-3 py-1 text-sm text-white hover:bg-amber-700 disabled:opacity-40"
+          className="rounded-md bg-amber-700 px-3 py-1 text-sm text-white hover:bg-amber-800 disabled:opacity-40"
         >
-          Enregistrer
+          {t.common.save}
         </button>
       </div>
     </div>

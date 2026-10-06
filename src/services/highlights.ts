@@ -1,18 +1,15 @@
 import type { Highlight, HighlightAnchor, HighlightColor } from '../db/db';
 
-export const HIGHLIGHT_COLORS: { value: HighlightColor; label: string; fill: string }[] = [
-  { value: 'yellow', label: 'Jaune', fill: '#facc15' },
-  { value: 'green', label: 'Vert', fill: '#4ade80' },
-  { value: 'pink', label: 'Rose', fill: '#f472b6' },
-  { value: 'blue', label: 'Bleu', fill: '#60a5fa' },
+/** Couleurs proposées (leurs noms sont traduits par l'interface). */
+export const HIGHLIGHT_COLORS: { value: HighlightColor; fill: string }[] = [
+  { value: 'yellow', fill: '#facc15' },
+  { value: 'green', fill: '#4ade80' },
+  { value: 'pink', fill: '#f472b6' },
+  { value: 'blue', fill: '#60a5fa' },
 ];
 
 export function colorFill(color: HighlightColor): string {
   return HIGHLIGHT_COLORS.find((c) => c.value === color)?.fill ?? HIGHLIGHT_COLORS[0].fill;
-}
-
-export function colorLabel(color: HighlightColor): string {
-  return HIGHLIGHT_COLORS.find((c) => c.value === color)?.label ?? color;
 }
 
 /** Compare deux positions EPUB (CFI) ; injecté pour garder ce module sans epub.js. */
@@ -37,9 +34,17 @@ export function cleanSelectionText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/** Libellés de l'export, dans la langue de l'interface. */
+export interface MarkdownLabels {
+  author: string;
+  count(n: number): string;
+  note: string;
+  color(color: HighlightColor): string;
+}
+
 /** Export Markdown, groupé par chapitre / page, dans l'ordre donné. */
-export function highlightsToMarkdown(book: { title: string; author: string }, highlights: Highlight[]): string {
-  const lines = [`# ${book.title}`, '', `*${book.author}* — ${highlights.length} surlignage(s)`, ''];
+export function highlightsToMarkdown(book: { title: string }, highlights: Highlight[], labels: MarkdownLabels): string {
+  const lines = [`# ${book.title}`, '', `*${labels.author}* — ${labels.count(highlights.length)}`, ''];
   let currentLabel: string | undefined;
   for (const highlight of highlights) {
     if (highlight.label && highlight.label !== currentLabel) {
@@ -47,8 +52,8 @@ export function highlightsToMarkdown(book: { title: string; author: string }, hi
       lines.push(`## ${currentLabel}`, '');
     }
     lines.push(`> ${highlight.text}`);
-    if (highlight.note) lines.push('', `**Note :** ${highlight.note}`);
-    lines.push('', `*${colorLabel(highlight.color)}*`, '');
+    if (highlight.note) lines.push('', `**${labels.note}** ${highlight.note}`);
+    lines.push('', `*${labels.color(highlight.color)}*`, '');
   }
   return lines.join('\n');
 }

@@ -1,8 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import Library from './components/Library';
 import { db } from './db/db';
+import { useI18n } from './i18n';
 import { parseRoute, ROUTES, type Route } from './routes';
 
 // Écrans chargés à la demande : la bibliothèque s'affiche sans attendre
@@ -13,9 +14,10 @@ const ReviewPage = lazy(() => import('./vocabulary/ReviewPage'));
 const SettingsPage = lazy(() => import('./settings/SettingsPage'));
 
 function Loading() {
+  const { t } = useI18n();
   return (
-    <p role="status" className="p-8 text-center text-stone-500">
-      Chargement…
+    <p role="status" className="p-8 text-center text-stone-600 dark:text-stone-300">
+      {t.common.loading}
     </p>
   );
 }
@@ -30,7 +32,7 @@ function useRoute(): Route {
   return route;
 }
 
-function NavLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+function NavLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
   return (
     <a
       href={href}
@@ -43,13 +45,14 @@ function NavLink({ href, active, children }: { href: string; active: boolean; ch
 }
 
 export default function App() {
+  const { t } = useI18n();
   const route = useRoute();
   // Mots à réviser, pour le badge de navigation (mis à jour à chaque changement du vocabulaire).
   const dueCount = useLiveQuery(() => db.words.where('dueAt').belowOrEqual(Date.now()).count(), []);
 
   if (route.name === 'reader') {
     return (
-      <ErrorBoundary resetKey={route.bookId} message="Le lecteur a rencontré un problème.">
+      <ErrorBoundary resetKey={route.bookId} message={t.app.readerError}>
         <Suspense fallback={<Loading />}>
           <Reader key={route.bookId} bookId={route.bookId} onClose={() => (window.location.hash = ROUTES.library)} />
         </Suspense>
@@ -59,34 +62,51 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
+      {/* Accès direct au contenu pour la navigation au clavier. */}
+      <a
+        href="#contenu"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('contenu')?.focus();
+        }}
+        className="sr-only rounded-lg bg-amber-700 px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50"
+      >
+        {t.app.skipToContent}
+      </a>
       <header className="border-b border-stone-200 bg-white/80 backdrop-blur dark:border-stone-700 dark:bg-stone-800/80">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
           <a href={ROUTES.library} className="mr-4 flex items-center gap-2">
             <span className="text-2xl" aria-hidden>
               📖
             </span>
-            <h1 className="text-xl font-semibold">Lecture</h1>
+            <h1 className="text-xl font-semibold">{t.app.name}</h1>
           </a>
-          <nav aria-label="Navigation principale" className="flex gap-1">
+          <nav aria-label={t.app.mainNavigation} className="flex flex-wrap gap-1">
             <NavLink href={ROUTES.library} active={route.name === 'library'}>
-              Bibliothèque
+              {t.app.nav.library}
             </NavLink>
             <NavLink href={ROUTES.vocabulary} active={route.name === 'vocabulary'}>
-              Vocabulaire
+              {t.app.nav.vocabulary}
             </NavLink>
             <NavLink href={ROUTES.review} active={route.name === 'review'}>
-              Révision
+              {t.app.nav.review}
               {dueCount !== undefined && dueCount > 0 && (
-                <span className="ml-1.5 rounded-full bg-amber-600 px-1.5 py-0.5 text-xs text-white">{dueCount}</span>
+                <span
+                  className="ml-1.5 rounded-full bg-amber-700 px-1.5 py-0.5 text-xs text-white"
+                  aria-label={t.app.dueWords(dueCount)}
+                >
+                  {dueCount}
+                </span>
               )}
             </NavLink>
             <NavLink href={ROUTES.settings} active={route.name === 'settings'}>
-              Paramètres
+              {t.app.nav.settings}
             </NavLink>
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      {/* tabIndex -1 : le lien d'évitement peut y placer le focus. */}
+      <main id="contenu" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none">
         <ErrorBoundary resetKey={route.name}>
           <Suspense fallback={<Loading />}>
             {route.name === 'library' && <Library />}

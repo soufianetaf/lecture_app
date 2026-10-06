@@ -25,19 +25,25 @@ export function isFinished(percentage: number): boolean {
   return percentage >= FINISHED_THRESHOLD;
 }
 
-/** « 45 % » ; arrondi vers le bas pour n'afficher 100 % qu'à la toute fin. */
-export function formatPercentage(percentage: number): string {
-  return `${Math.floor(clamp01(percentage) * 100)} %`;
+export type DisplayLanguage = 'fr' | 'en';
+
+/**
+ * « 45 % » (français, espace avant %) ou « 45% » (anglais) ; arrondi vers
+ * le bas pour n'afficher 100 % qu'à la toute fin.
+ */
+export function formatPercentage(percentage: number, language: DisplayLanguage = 'fr'): string {
+  const value = Math.floor(clamp01(percentage) * 100);
+  return language === 'fr' ? `${value} %` : `${value}%`;
 }
 
-/** « moins d'1 min », « 12 min », « 1 h 05 ». */
-export function formatDuration(ms: number): string {
+/** « moins d'1 min », « 12 min », « 1 h 05 » (ou « less than 1 min », « 1 h 05 min »). */
+export function formatDuration(ms: number, language: DisplayLanguage = 'fr'): string {
   const totalMinutes = Math.floor(Math.max(0, ms) / 60000);
-  if (totalMinutes < 1) return 'moins d’1 min';
+  if (totalMinutes < 1) return language === 'fr' ? 'moins d’1 min' : 'less than 1 min';
   if (totalMinutes < 60) return `${totalMinutes} min`;
   const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${hours} h ${String(minutes).padStart(2, '0')}`;
+  const minutes = String(totalMinutes % 60).padStart(2, '0');
+  return language === 'fr' ? `${hours} h ${minutes}` : `${hours} h ${minutes} min`;
 }
 
 export interface ActiveTimeInput {

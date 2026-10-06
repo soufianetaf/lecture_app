@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { BookFormat, ColumnWidth, ReaderFont, ReaderTheme, Settings } from '../db/db';
+import { useI18n } from '../i18n';
 import { THEME_COLORS } from './types';
 
 interface Props {
@@ -8,32 +9,42 @@ interface Props {
   onChange(patch: Partial<Omit<Settings, 'id'>>): void;
 }
 
-const THEMES: { value: ReaderTheme; label: string }[] = [
-  { value: 'light', label: 'Clair' },
-  { value: 'sepia', label: 'Sépia' },
-  { value: 'dark', label: 'Sombre' },
-];
+const THEMES: ReaderTheme[] = ['light', 'sepia', 'dark'];
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2">
+    <div className="flex items-center justify-between gap-4 py-2" role="group" aria-label={label}>
       <span className="text-sm">{label}</span>
       <div className="flex items-center gap-1">{children}</div>
     </div>
   );
 }
 
-function Stepper({ value, onMinus, onPlus }: { value: string; onMinus(): void; onPlus(): void }) {
+function Stepper({
+  setting,
+  value,
+  onMinus,
+  onPlus,
+}: {
+  /** Nom du réglage, pour des boutons distincts aux lecteurs d'écran (« Taille : augmenter »). */
+  setting: string;
+  value: string;
+  onMinus(): void;
+  onPlus(): void;
+}) {
+  const { t } = useI18n();
   const button = 'h-8 w-8 rounded-md border border-current/20 text-lg leading-none hover:bg-current/10';
   return (
     <>
-      <button onClick={onMinus} className={button} aria-label="Diminuer">
+      <button onClick={onMinus} className={button} aria-label={t.readerSettings.decrease(setting)}>
         −
       </button>
-      <span className="w-14 text-center text-sm tabular-nums">{value}</span>
-      <button onClick={onPlus} className={button} aria-label="Augmenter">
+      <span className="w-14 text-center text-sm tabular-nums" aria-live="polite">
+        {value}
+      </span>
+      <button onClick={onPlus} className={button} aria-label={t.readerSettings.increase(setting)}>
         +
       </button>
     </>
@@ -56,7 +67,7 @@ function Choice<T extends string>({
           key={option.value}
           onClick={() => onChange(option.value)}
           aria-pressed={value === option.value}
-          className={`rounded px-2.5 py-1 text-sm ${value === option.value ? 'bg-amber-600 text-white' : 'hover:bg-current/10'}`}
+          className={`rounded px-2.5 py-1 text-sm ${value === option.value ? 'bg-amber-700 text-white' : 'hover:bg-current/10'}`}
         >
           {option.label}
         </button>
@@ -66,45 +77,48 @@ function Choice<T extends string>({
 }
 
 export default function SettingsPanel({ format, settings, onChange }: Props) {
+  const { t } = useI18n();
+  const s = t.readerSettings;
+  // Pourcentage de réglage (peut dépasser 100 %, contrairement à l'avancement).
+  const percent = (value: number) => `${Math.round(value)}${t.locale.startsWith('fr') ? ' ' : ''}%`;
   return (
-    <div className="w-80 p-4">
-      <Row label="Thème">
+    <section aria-label={t.reader.settingsTitle} className="w-80 p-4">
+      <Row label={s.theme}>
         {THEMES.map((theme) => (
           <button
-            key={theme.value}
-            onClick={() => onChange({ theme: theme.value })}
-            aria-pressed={settings.theme === theme.value}
-            title={theme.label}
-            className={`h-9 w-14 rounded-md border text-xs ${settings.theme === theme.value ? 'ring-2 ring-amber-600' : 'border-black/20'}`}
-            style={{ background: THEME_COLORS[theme.value].background, color: THEME_COLORS[theme.value].text }}
+            key={theme}
+            onClick={() => onChange({ theme })}
+            aria-pressed={settings.theme === theme}
+            title={s.themes[theme]}
+            className={`h-9 w-14 rounded-md border text-xs ${settings.theme === theme ? 'ring-2 ring-amber-600' : 'border-black/20'}`}
+            style={{ background: THEME_COLORS[theme].background, color: THEME_COLORS[theme].text }}
           >
-            {theme.label}
+            {s.themes[theme]}
           </button>
         ))}
       </Row>
 
       {format === 'epub' ? (
         <>
-          <Row label="Police">
+          <Row label={s.font}>
             <Choice<ReaderFont>
-              options={[
-                { value: 'serif', label: 'Serif' },
-                { value: 'sans', label: 'Sans' },
-              ]}
+              options={(['serif', 'sans'] as const).map((value) => ({ value, label: s.fonts[value] }))}
               value={settings.fontFamily}
               onChange={(fontFamily) => onChange({ fontFamily })}
             />
           </Row>
-          <Row label="Taille">
+          <Row label={s.size}>
             <Stepper
-              value={`${settings.fontSize} %`}
+              setting={s.size}
+              value={percent(settings.fontSize)}
               onMinus={() => onChange({ fontSize: clamp(settings.fontSize - 10, 70, 200) })}
               onPlus={() => onChange({ fontSize: clamp(settings.fontSize + 10, 70, 200) })}
             />
           </Row>
-          <Row label="Interligne">
+          <Row label={s.lineHeight}>
             <Stepper
-              value={settings.lineHeight.toFixed(1)}
+              setting={s.lineHeight}
+              value={settings.lineHeight.toLocaleString(t.locale, { minimumFractionDigits: 1 })}
               onMinus={() =>
                 onChange({ lineHeight: clamp(Math.round((settings.lineHeight - 0.2) * 10) / 10, 1.2, 2.4) })
               }
@@ -113,13 +127,12 @@ export default function SettingsPanel({ format, settings, onChange }: Props) {
               }
             />
           </Row>
-          <Row label="Marges">
+          <Row label={s.margins}>
             <Choice<ColumnWidth>
-              options={[
-                { value: 'wide', label: 'Petites' },
-                { value: 'medium', label: 'Moyennes' },
-                { value: 'narrow', label: 'Grandes' },
-              ]}
+              options={(['wide', 'medium', 'narrow'] as const).map((value) => ({
+                value,
+                label: s.marginOptions[value],
+              }))}
               value={settings.columnWidth}
               onChange={(columnWidth) => onChange({ columnWidth })}
             />
@@ -127,9 +140,10 @@ export default function SettingsPanel({ format, settings, onChange }: Props) {
         </>
       ) : (
         <>
-          <Row label="Zoom">
+          <Row label={s.zoom}>
             <Stepper
-              value={`${Math.round(settings.pdfZoom * 100)} %`}
+              setting={s.zoom}
+              value={percent(settings.pdfZoom * 100)}
               onMinus={() => onChange({ pdfZoom: clamp(Math.round((settings.pdfZoom - 0.1) * 10) / 10, 0.5, 3) })}
               onPlus={() => onChange({ pdfZoom: clamp(Math.round((settings.pdfZoom + 0.1) * 10) / 10, 0.5, 3) })}
             />
@@ -138,10 +152,10 @@ export default function SettingsPanel({ format, settings, onChange }: Props) {
             onClick={() => onChange({ pdfZoom: 1 })}
             className="mt-1 w-full rounded-md border border-current/20 py-1.5 text-sm hover:bg-current/10"
           >
-            Ajuster à la largeur
+            {s.fitWidth}
           </button>
         </>
       )}
-    </div>
+    </section>
   );
 }

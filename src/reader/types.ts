@@ -17,9 +17,15 @@ export interface ReaderLocation {
   percentage?: number;
   /** Chapitre ou section en cours, si connu. */
   chapter?: string;
-  /** Texte de position, ex. « Page 3 / 120 ». */
-  label: string;
+  /**
+   * Page affichée : dans le livre (PDF) ou dans le chapitre (EPUB, dont la
+   * pagination dépend de la taille du texte). Mise en forme par l'interface.
+   */
+  page: { current: number; total: number; scope: 'book' | 'chapter' };
 }
+
+/** Erreurs signalées par les vues, traduites par l'interface. */
+export type ReaderErrorCode = 'loadBook' | 'openPdf' | 'openEpub' | 'renderPage';
 
 /** Rectangle en coordonnées de la fenêtre, pour placer un menu flottant. */
 export type ScreenRect = Pick<DOMRect, 'top' | 'left' | 'bottom' | 'right'>;
@@ -46,6 +52,8 @@ export interface ReaderHandle {
 
 export interface ViewProps {
   file: Blob;
+  /** Titre du livre : nom accessible de la zone de lecture. */
+  title: string;
   settings: Settings;
   /** Position à laquelle reprendre la lecture. */
   initialPosition?: ReaderPosition;
@@ -53,7 +61,7 @@ export interface ViewProps {
   highlights: Highlight[];
   onReady(toc: TocItem[]): void;
   onLocationChange(location: ReaderLocation): void;
-  onError(message: string): void;
+  onError(code: ReaderErrorCode): void;
   /** Touches et gestes captés à l'intérieur du livre (iframe EPUB). */
   onKey(key: string): void;
   /** Texte sélectionné, ou `null` quand la sélection disparaît. */

@@ -42,6 +42,10 @@ describe('formatPercentage', () => {
     expect(formatPercentage(1)).toBe('100 %');
     expect(formatPercentage(0.456)).toBe('45 %');
   });
+
+  it('suit la typographie anglaise en anglais', () => {
+    expect(formatPercentage(0.456, 'en')).toBe('45%');
+  });
 });
 
 describe('isFinished', () => {
@@ -56,6 +60,11 @@ describe('formatDuration', () => {
     expect(formatDuration(30_000)).toBe('moins d’1 min');
     expect(formatDuration(12 * 60_000)).toBe('12 min');
     expect(formatDuration(65 * 60_000)).toBe('1 h 05');
+  });
+
+  it('existe en anglais', () => {
+    expect(formatDuration(30_000, 'en')).toBe('less than 1 min');
+    expect(formatDuration(65 * 60_000, 'en')).toBe('1 h 05 min');
   });
 });
 

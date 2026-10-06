@@ -14,7 +14,14 @@ import { pdfjs } from '../services/pdf';
 import { normalizeRects, rectsContainPoint } from '../services/pdfRects';
 import { pdfPercentage } from '../services/progress';
 import { selectionSentence } from './selectionContext';
-import { THEME_COLORS, type ReaderHandle, type TextSelection, type TocItem, type ViewProps } from './types';
+import {
+  THEME_COLORS,
+  type ReaderErrorCode,
+  type ReaderHandle,
+  type TextSelection,
+  type TocItem,
+  type ViewProps,
+} from './types';
 import './pdf-text-layer.css';
 
 /** Largeur maximale d'une page à zoom 100 %, pour rester lisible sur grand écran. */
@@ -76,7 +83,7 @@ const PdfView = forwardRef<ReaderHandle, ViewProps>(function PdfView(props, ref)
   const onLocationChange = useEffectEvent((...args: Parameters<ViewProps['onLocationChange']>) =>
     props.onLocationChange(...args),
   );
-  const onError = useEffectEvent((message: string) => props.onError(message));
+  const onError = useEffectEvent((code: ReaderErrorCode) => props.onError(code));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -126,7 +133,8 @@ const PdfView = forwardRef<ReaderHandle, ViewProps>(function PdfView(props, ref)
     return {
       anchor: { format: 'pdf', page: pageNumber, rects },
       text,
-      label: chapter ? `${chapter} · page ${pageNumber}` : `Page ${pageNumber}`,
+      // Enregistré avec le surlignage : « p. » se lit en français comme en anglais.
+      label: chapter ? `${chapter} · p. ${pageNumber}` : `p. ${pageNumber}`,
       context: selectionSentence(range, textLayer, ' '),
       rect: range.getBoundingClientRect(),
     };
@@ -181,7 +189,7 @@ const PdfView = forwardRef<ReaderHandle, ViewProps>(function PdfView(props, ref)
     })().catch((error) => {
       if (cancelled) return;
       console.error(error);
-      onError('Impossible d’ouvrir ce PDF.');
+      onError('openPdf');
     });
 
     return () => {
@@ -237,7 +245,7 @@ const PdfView = forwardRef<ReaderHandle, ViewProps>(function PdfView(props, ref)
     })().catch((error) => {
       if (cancelled || error?.name === 'RenderingCancelledException') return;
       console.error(error);
-      onError('Impossible d’afficher cette page.');
+      onError('renderPage');
     });
 
     return () => {
@@ -256,7 +264,7 @@ const PdfView = forwardRef<ReaderHandle, ViewProps>(function PdfView(props, ref)
       position: { format: 'pdf', page: pageNumber },
       percentage: pdfPercentage(pageNumber, pdf.numPages),
       chapter: chapterForPage(tocRef.current, pageNumber),
-      label: `Page ${pageNumber} / ${pdf.numPages}`,
+      page: { current: pageNumber, total: pdf.numPages, scope: 'book' },
     });
   }, [pdf, pageNumber, tocRef]);
 
@@ -271,7 +279,11 @@ const PdfView = forwardRef<ReaderHandle, ViewProps>(function PdfView(props, ref)
   return (
     <div
       ref={scrollRef}
-      className="h-full overflow-auto py-4"
+      // Zone de lecture nommée, et focusable pour défiler au clavier quand la page est zoomée.
+      role="region"
+      aria-label={props.title}
+      tabIndex={0}
+      className="h-full overflow-auto py-4 outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
       style={{ background: THEME_COLORS[settings.theme].background }}
     >
       <div

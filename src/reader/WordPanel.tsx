@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import type { BookLanguage } from '../db/db';
 import { useAsync, type AsyncState } from '../hooks/useAsync';
-import { lookupErrorMessage } from '../services/dictionary/errors';
+import { useI18n } from '../i18n';
+import { LookupError } from '../services/dictionary/errors';
 import {
   lookupDefinition,
   lookupTranslation,
@@ -14,13 +15,13 @@ import SaveWordButton from './SaveWordButton';
 /** Ce que le lecteur a demandé : un mot à définir ou un passage à traduire. */
 export type LookupQuery = { kind: 'word'; word: string; context?: string } | { kind: 'text'; text: string };
 
-const LANGUAGE_NAMES: Record<LookupLanguage, string> = { fr: 'français', en: 'anglais' };
 const MAX_SENSES = 3;
 const MAX_DEFINITIONS_PER_SENSE = 3;
 
 const other = (language: LookupLanguage): LookupLanguage => (language === 'fr' ? 'en' : 'fr');
 
 function SourceLink({ source }: { source: Source }) {
+  const { t } = useI18n();
   return (
     <a
       href={source.url}
@@ -28,7 +29,7 @@ function SourceLink({ source }: { source: Source }) {
       rel="noreferrer"
       className="text-[11px] underline opacity-60 hover:opacity-100"
     >
-      Source : {source.name}
+      {t.dictionary.source(source.name)}
       {source.license && ` (${source.license})`}
     </a>
   );
@@ -48,20 +49,23 @@ function AsyncSection<T>({
   onRetry(): void;
   children(data: T): ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <section className="border-t border-current/10 px-4 py-3" aria-busy={state.status === 'loading'}>
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{title}</h3>
       {state.status === 'loading' && (
-        <div className="space-y-2" aria-label="Chargement">
+        <div className="space-y-2" role="status" aria-label={t.common.loading}>
           <div className="h-3 w-3/4 animate-pulse rounded bg-current/10" />
           <div className="h-3 w-1/2 animate-pulse rounded bg-current/10" />
         </div>
       )}
       {state.status === 'error' && (
         <div role="alert" className="text-sm">
-          <p className="text-red-600">{lookupErrorMessage(state.error)}</p>
+          <p className="text-red-600">
+            {state.error instanceof LookupError ? t.dictionary.errors[state.error.kind] : t.dictionary.unexpectedError}
+          </p>
           <button onClick={onRetry} className="mt-1 text-xs underline">
-            Réessayer
+            {t.common.retry}
           </button>
         </div>
       )}
@@ -110,6 +114,7 @@ function WordLookup({
   context?: string;
   book: { id: string; title: string };
 }) {
+  const { t } = useI18n();
   const [retry, setRetry] = useState(0);
   const target = other(language);
   const definition = useAsync(() => lookupDefinition(word, language), `def:${language}:${word}:${retry}`);
@@ -122,7 +127,7 @@ function WordLookup({
         <p className="text-2xl font-semibold">{word}</p>
         {entry?.lemma && (
           <p className="text-sm opacity-70">
-            forme de <strong>{entry.lemma}</strong>
+            {t.dictionary.formOf} <strong>{entry.lemma}</strong>
           </p>
         )}
         {entry?.entry.pronunciation && (
@@ -141,17 +146,17 @@ function WordLookup({
         />
       </div>
       <AsyncSection
-        title={`Définition (${LANGUAGE_NAMES[language]})`}
+        title={t.dictionary.definition(t.common.languagesInline[language])}
         state={definition}
-        notFound={`Aucune définition trouvée pour « ${word} ».`}
+        notFound={t.dictionary.noDefinition(word)}
         onRetry={() => setRetry((n) => n + 1)}
       >
         {(result) => <Definitions result={result} />}
       </AsyncSection>
       <AsyncSection
-        title={`Traduction (${LANGUAGE_NAMES[target]})`}
+        title={t.dictionary.translation(t.common.languagesInline[target])}
         state={translation}
-        notFound="Aucune traduction trouvée."
+        notFound={t.dictionary.noTranslation}
         onRetry={() => setRetry((n) => n + 1)}
       >
         {(result) => (
@@ -163,19 +168,19 @@ function WordLookup({
                   <p className="text-xs opacity-70">
                     {group.lemma ? (
                       <>
-                        forme de <strong>{group.lemma}</strong>
+                        {t.dictionary.formOf} <strong>{group.lemma}</strong>
                       </>
                     ) : (
                       <>
-                        <strong>{word}</strong> (autres sens)
+                        <strong>{word}</strong> {t.dictionary.otherSenses}
                       </>
                     )}
                   </p>
                 )}
                 <ul className="flex flex-wrap gap-1.5">
-                  {group.translations.map((t) => (
-                    <li key={t} className="rounded-full bg-amber-600/15 px-2.5 py-1 text-sm">
-                      {t}
+                  {group.translations.map((gloss) => (
+                    <li key={gloss} className="rounded-full bg-amber-600/15 px-2.5 py-1 text-sm">
+                      {gloss}
                     </li>
                   ))}
                 </ul>
@@ -190,6 +195,7 @@ function WordLookup({
 }
 
 function TextLookup({ text, language }: { text: string; language: LookupLanguage }) {
+  const { t } = useI18n();
   const [retry, setRetry] = useState(0);
   const target = other(language);
   const translation = useAsync(() => translateText(text, language, target), `txt:${language}:${text}:${retry}`);
@@ -199,12 +205,12 @@ function TextLookup({ text, language }: { text: string; language: LookupLanguage
         {text.length > MAX_TEXT_LENGTH ? `${text.slice(0, MAX_TEXT_LENGTH)}…` : text}
       </blockquote>
       {text.length > MAX_TEXT_LENGTH && (
-        <p className="mx-4 mb-2 text-xs opacity-70">Seuls les {MAX_TEXT_LENGTH} premiers caractères sont traduits.</p>
+        <p className="mx-4 mb-2 text-xs opacity-70">{t.dictionary.truncated(MAX_TEXT_LENGTH)}</p>
       )}
       <AsyncSection
-        title={`Traduction (${LANGUAGE_NAMES[target]})`}
+        title={t.dictionary.translation(t.common.languagesInline[target])}
         state={translation}
-        notFound="Aucune traduction trouvée."
+        notFound={t.dictionary.noTranslation}
         onRetry={() => setRetry((n) => n + 1)}
       >
         {(result) => (
@@ -219,6 +225,7 @@ function TextLookup({ text, language }: { text: string; language: LookupLanguage
 }
 
 function AudioButton({ url }: { url: string }) {
+  const { t } = useI18n();
   const [failed, setFailed] = useState(false);
   return (
     <button
@@ -226,8 +233,8 @@ function AudioButton({ url }: { url: string }) {
         new Audio(url).play().catch(() => setFailed(true));
       }}
       disabled={failed}
-      title={failed ? 'Prononciation audio indisponible' : 'Écouter la prononciation'}
-      aria-label="Écouter la prononciation"
+      title={failed ? t.dictionary.audioUnavailable : t.dictionary.listen}
+      aria-label={t.dictionary.listen}
       className="rounded-full px-1.5 hover:bg-current/10 disabled:opacity-40"
     >
       🔊
@@ -246,27 +253,24 @@ interface Props {
 
 /** Panneau latéral (ou en bas sur mobile) : définition et traduction. */
 export default function WordPanel({ query, language, book, onLanguageChange, onClose }: Props) {
+  const { t } = useI18n();
   return (
     <aside
-      aria-label={query.kind === 'word' ? 'Définition et traduction' : 'Traduction'}
+      aria-label={query.kind === 'word' ? t.dictionary.wordPanel : t.dictionary.textPanel}
       className="flex flex-col overflow-y-auto"
     >
       <div className="flex items-center justify-between px-4 pb-1 pt-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">
-          {query.kind === 'word' ? 'Dictionnaire' : 'Traduction du passage'}
+          {query.kind === 'word' ? t.dictionary.title : t.dictionary.textTitle}
         </h2>
-        <button
-          onClick={onClose}
-          aria-label="Fermer le dictionnaire"
-          className="rounded-md px-2 py-1 hover:bg-current/10"
-        >
+        <button onClick={onClose} aria-label={t.dictionary.close} className="rounded-md px-2 py-1 hover:bg-current/10">
           ✕
         </button>
       </div>
 
       {language === 'unknown' ? (
         <div className="px-4 py-3 text-sm">
-          <p className="mb-2">Dans quelle langue est ce livre ?</p>
+          <p className="mb-2">{t.dictionary.askLanguage}</p>
           <div className="flex gap-2">
             {(['fr', 'en'] as const).map((lang) => (
               <button
@@ -274,7 +278,7 @@ export default function WordPanel({ query, language, book, onLanguageChange, onC
                 onClick={() => onLanguageChange(lang)}
                 className="rounded-md border border-current/20 px-3 py-1.5 hover:bg-current/10"
               >
-                {lang === 'fr' ? 'Français' : 'Anglais'}
+                {t.common.languages[lang]}
               </button>
             ))}
           </div>

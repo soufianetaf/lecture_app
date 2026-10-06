@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import type { AsyncState } from '../hooks/useAsync';
+import { useI18n } from '../i18n';
 import type { DefinitionResult, LookupLanguage, TranslationResult } from '../services/dictionary/types';
 import { findWord, removeWord, saveWord, wordKey } from '../services/vocabulary/vocabularyService';
 
@@ -31,6 +32,7 @@ function savedTranslations(result: TranslationResult | null): string[] {
 
 /** « Ajouter au vocabulaire » / « Dans ton vocabulaire » (cliquer à nouveau retire le mot). */
 export default function SaveWordButton({ word, language, context, book, definition, translation }: Props) {
+  const { t } = useI18n();
   const [error, setError] = useState(false);
   const definitionData = definition.status === 'success' ? definition.data : null;
   const lemma = definitionData?.lemma;
@@ -69,18 +71,18 @@ export default function SaveWordButton({ word, language, context, book, definiti
         onClick={toggle}
         disabled={pending}
         aria-pressed={Boolean(saved)}
-        title={saved ? 'Retirer du vocabulaire' : 'Ajouter au vocabulaire'}
+        title={saved ? t.dictionary.removeTitle : t.dictionary.saveTitle}
         className={`rounded-full border px-3 py-1 text-sm transition disabled:opacity-40 ${
           saved
-            ? 'border-amber-600 bg-amber-600 text-white hover:bg-amber-700'
+            ? 'border-amber-700 bg-amber-700 text-white hover:bg-amber-800'
             : 'border-current/25 hover:bg-current/10'
         }`}
       >
-        {saved ? '★ Dans ton vocabulaire' : '☆ Ajouter au vocabulaire'}
+        {saved ? t.dictionary.saved : t.dictionary.save}
       </button>
       {error && (
         <p role="alert" className="mt-1 text-xs text-red-600">
-          L’enregistrement a échoué. Réessaie.
+          {t.dictionary.saveFailed}
         </p>
       )}
     </div>

@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ProgressBar from '../components/ProgressBar';
 import { db, type Book, type BookLanguage, type Highlight, type Progress } from '../db/db';
+import { useI18n } from '../i18n';
 import type { LookupLanguage } from '../services/dictionary/types';
 import { extractWord } from '../services/dictionary/words';
 import { useReadingTimer } from '../hooks/useReadingTimer';
 import { useSettings } from '../hooks/useSettings';
 import { getHighlights } from '../services/highlightService';
 import { highlightsToMarkdown, sortHighlights } from '../services/highlights';
-import { formatPercentage } from '../services/progress';
 import { getEpubLocations, getProgress, saveEpubLocations, savePosition } from '../services/progressService';
 import { downloadTextFile, safeFileName } from '../utils/download';
 import { compareCfi } from './epubCfi';
@@ -21,6 +21,7 @@ import SettingsPanel from './SettingsPanel';
 import TocPanel from './TocPanel';
 import {
   THEME_COLORS,
+  type ReaderErrorCode,
   type ReaderHandle,
   type ReaderLocation,
   type ScreenRect,
@@ -83,6 +84,7 @@ async function openBook(bookId: string): Promise<OpenedBook | null> {
 }
 
 export default function Reader({ bookId, onClose }: { bookId: string; onClose(): void }) {
+  const { t } = useI18n();
   // Chargé une seule fois : une requête "live" recréerait le fichier à chaque
   // mise à jour et rouvrirait le livre.
   const [opened, setOpened] = useState<OpenedBook | null>();
@@ -90,7 +92,7 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
   const [toc, setToc] = useState<TocItem[]>([]);
   const [location, setLocation] = useState<ReaderLocation>();
   const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<ReaderErrorCode>();
   const [panel, setPanel] = useState<Panel>(null);
   const [lookup, setLookup] = useState<LookupQuery | null>(null);
   // Langue choisie depuis le dictionnaire quand elle était inconnue.
@@ -146,7 +148,7 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
       })
       .catch((err) => {
         console.error(err);
-        if (!cancelled) setError('Impossible de charger ce livre.');
+        if (!cancelled) setError('loadBook');
       });
     return () => {
       cancelled = true;
@@ -155,11 +157,11 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
 
   const title = opened?.book.title;
   useEffect(() => {
-    if (title) document.title = `${title} – Lecture`;
+    if (title) document.title = `${title} – ${t.app.name}`;
     return () => {
-      document.title = 'Lecture';
+      document.title = t.app.name;
     };
-  }, [title]);
+  }, [title, t.app.name]);
 
   const handleKey = useCallback(
     (key: string) => {
@@ -205,9 +207,14 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
 
   const exportHighlights = useCallback(() => {
     if (!opened) return;
-    const markdown = highlightsToMarkdown(opened.book, sortedHighlights);
-    downloadTextFile(`${safeFileName(opened.book.title)}-surlignages.md`, markdown, 'text/markdown');
-  }, [opened, sortedHighlights]);
+    const markdown = highlightsToMarkdown(opened.book, sortedHighlights, {
+      author: opened.book.author.trim() || t.common.unknownAuthor,
+      count: t.highlights.markdown.count,
+      note: t.highlights.markdown.note,
+      color: (color) => t.highlights.colors[color],
+    });
+    downloadTextFile(`${safeFileName(opened.book.title)}-${t.reader.highlightsFile}.md`, markdown, 'text/markdown');
+  }, [opened, sortedHighlights, t]);
 
   const onLocationsReady = useCallback(
     (locations: string) => {
@@ -219,9 +226,9 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
   if (opened === null) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p>Ce livre n’existe plus dans la bibliothèque.</p>
-        <button onClick={onClose} className="rounded-lg bg-amber-600 px-4 py-2 text-white">
-          Retour à la bibliothèque
+        <p>{t.reader.missing}</p>
+        <button onClick={onClose} className="rounded-lg bg-amber-700 px-4 py-2 text-white hover:bg-amber-800">
+          {t.reader.backToLibrary}
         </button>
       </div>
     );
@@ -235,33 +242,34 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
   return (
     <div className="flex h-screen flex-col" style={{ background: colors.background, color: colors.text }}>
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-current/10 px-2">
-        <button onClick={onClose} className={toolbarButton} title="Retour à la bibliothèque">
-          ← Bibliothèque
+        <button onClick={onClose} className={toolbarButton} title={t.reader.backTitle}>
+          {t.reader.back}
         </button>
         <button
           onClick={() => setPanel(panel === 'toc' ? null : 'toc')}
           aria-pressed={panel === 'toc'}
           className={toolbarButton}
-          title="Table des matières"
+          title={t.reader.tocTitle}
         >
-          ☰ Sommaire
+          {t.reader.toc}
         </button>
         <h1 className="mx-2 flex-1 truncate text-center text-sm font-medium opacity-80">{title}</h1>
         <button
           onClick={() => setPanel(panel === 'highlights' ? null : 'highlights')}
           aria-pressed={panel === 'highlights'}
           className={toolbarButton}
-          title="Surlignages et notes"
+          title={t.reader.highlightsTitle}
         >
-          ✎ Surlignages{highlights.length > 0 && ` (${highlights.length})`}
+          {t.reader.highlights}
+          {highlights.length > 0 && ` (${highlights.length})`}
         </button>
         <button
           onClick={() => setPanel(panel === 'settings' ? null : 'settings')}
           aria-pressed={panel === 'settings'}
           className={toolbarButton}
-          title="Réglages de lecture"
+          title={t.reader.settingsTitle}
         >
-          Aa Réglages
+          {t.reader.settings}
         </button>
       </header>
 
@@ -282,6 +290,7 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
               <PdfView
                 ref={viewRef}
                 file={opened.book.file}
+                title={opened.book.title}
                 settings={settings}
                 initialPosition={opened.progress?.position}
                 highlights={highlights}
@@ -296,6 +305,7 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
               <EpubView
                 ref={viewRef}
                 file={opened.book.file}
+                title={opened.book.title}
                 settings={settings}
                 initialPosition={opened.progress?.position}
                 highlights={highlights}
@@ -314,23 +324,52 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
               className="absolute inset-0 flex items-center justify-center"
               style={{ background: colors.background }}
             >
-              <p className={error ? 'text-red-600' : 'opacity-60'}>{error ?? 'Ouverture du livre…'}</p>
+              <p role={error ? 'alert' : 'status'} className={error ? 'text-red-600' : 'opacity-70'}>
+                {error ? t.reader.errors[error] : t.reader.opening}
+              </p>
             </div>
           )}
+          {/* Menus flottants dans <main> : contenu rattaché à une région (accessibilité). */}
+          <div ref={menuRef}>
+            {highlightMenu.menu?.kind === 'selection' && (
+              <SelectionMenu
+                rect={highlightMenu.menu.selection.rect}
+                onPick={highlightMenu.create}
+                onTranslate={
+                  extractWord(highlightMenu.menu.selection.text, bookLanguage)
+                    ? undefined
+                    : () => {
+                        if (highlightMenu.menu?.kind === 'selection') {
+                          setLookup({ kind: 'text', text: highlightMenu.menu.selection.text });
+                        }
+                        closeMenu();
+                      }
+                }
+              />
+            )}
+            {highlightMenu.menu?.kind === 'edit' && (
+              <EditMenuFor
+                highlights={highlights}
+                highlightId={highlightMenu.menu.highlightId}
+                rect={highlightMenu.menu.rect}
+                actions={highlightMenu}
+              />
+            )}
+          </div>
         </main>
 
         {ready && (
           <>
             <button
               onClick={() => viewRef.current?.prev()}
-              aria-label="Page précédente"
+              aria-label={t.reader.previousPage}
               className="absolute left-0 top-1/2 hidden h-24 w-10 -translate-y-1/2 items-center justify-center text-2xl opacity-30 hover:opacity-80 sm:flex"
             >
               ‹
             </button>
             <button
               onClick={() => viewRef.current?.next()}
-              aria-label="Page suivante"
+              aria-label={t.reader.nextPage}
               className="absolute right-0 top-1/2 hidden h-24 w-10 -translate-y-1/2 items-center justify-center text-2xl opacity-30 hover:opacity-80 sm:flex"
             >
               ›
@@ -384,7 +423,7 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
             style={{ background: colors.background }}
           >
             {/* Un problème du dictionnaire ne doit jamais interrompre la lecture. */}
-            <ErrorBoundary compact resetKey={lookup} message="Le dictionnaire a rencontré un problème.">
+            <ErrorBoundary compact resetKey={lookup} message={t.app.dictionaryError}>
               <WordPanel
                 query={lookup}
                 language={bookLanguage}
@@ -397,42 +436,20 @@ export default function Reader({ bookId, onClose }: { bookId: string; onClose():
         )}
       </div>
 
-      <div ref={menuRef}>
-        {highlightMenu.menu?.kind === 'selection' && (
-          <SelectionMenu
-            rect={highlightMenu.menu.selection.rect}
-            onPick={highlightMenu.create}
-            onTranslate={
-              extractWord(highlightMenu.menu.selection.text, bookLanguage)
-                ? undefined
-                : () => {
-                    if (highlightMenu.menu?.kind === 'selection') {
-                      setLookup({ kind: 'text', text: highlightMenu.menu.selection.text });
-                    }
-                    closeMenu();
-                  }
-            }
-          />
-        )}
-        {highlightMenu.menu?.kind === 'edit' && (
-          <EditMenuFor
-            highlights={highlights}
-            highlightId={highlightMenu.menu.highlightId}
-            rect={highlightMenu.menu.rect}
-            actions={highlightMenu}
-          />
-        )}
-      </div>
-
       <footer className="flex h-11 shrink-0 items-center gap-4 border-t border-current/10 px-4 text-xs">
         <span className="min-w-0 flex-1 truncate opacity-70">{location?.chapter ?? ''}</span>
         {percentage !== undefined && (
-          <div className="flex w-40 shrink-0 items-center gap-2" title="Avancement dans le livre">
-            <ProgressBar value={percentage} className="flex-1" />
-            <span className="w-9 text-right tabular-nums opacity-70">{formatPercentage(percentage)}</span>
+          <div className="flex w-40 shrink-0 items-center gap-2" title={t.reader.progress}>
+            <ProgressBar value={percentage} label={t.reader.progress} className="flex-1" />
+            <span className="w-9 text-right tabular-nums opacity-70">{t.format.percentage(percentage)}</span>
           </div>
         )}
-        <span className="min-w-0 flex-1 truncate text-right tabular-nums opacity-70">{location?.label ?? ''}</span>
+        <span className="min-w-0 flex-1 truncate text-right tabular-nums opacity-70">
+          {location &&
+            (location.page.scope === 'book'
+              ? t.reader.page(location.page.current, location.page.total)
+              : t.reader.chapterPage(location.page.current, location.page.total))}
+        </span>
       </footer>
     </div>
   );

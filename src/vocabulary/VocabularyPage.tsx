@@ -2,31 +2,31 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import WordInContext from '../components/WordInContext';
 import { db, type VocabularyWord, type WordStatus } from '../db/db';
+import { useI18n, type Messages } from '../i18n';
 import { ROUTES } from '../routes';
 import { wordsToAnkiCsv } from '../services/vocabulary/ankiExport';
-import { formatInterval } from '../services/vocabulary/srs';
 import { removeWord, setWordStatus } from '../services/vocabulary/vocabularyService';
 import { downloadTextFile } from '../utils/download';
 
-const STATUS_LABELS: Record<WordStatus, string> = { new: 'Nouveau', learning: 'En cours', known: 'Acquis' };
+const STATUSES: WordStatus[] = ['new', 'learning', 'known'];
 const STATUS_STYLES: Record<WordStatus, string> = {
   new: 'border-sky-400 text-sky-700 dark:text-sky-300',
   learning: 'border-amber-500 text-amber-700 dark:text-amber-300',
   known: 'border-green-500 text-green-700 dark:text-green-300',
 };
-const LANGUAGE_LABELS = { fr: 'Français', en: 'Anglais' };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function nextReviewLabel(word: VocabularyWord, now: number): string {
-  if (word.dueAt <= now) return 'à réviser maintenant';
-  return `révision ${formatInterval(Math.max(1, Math.round((word.dueAt - now) / DAY_MS)))}`;
+function nextReviewLabel(word: VocabularyWord, now: number, t: Messages): string {
+  if (word.dueAt <= now) return t.vocabulary.dueNow;
+  return t.vocabulary.nextReview(t.format.interval(Math.max(1, Math.round((word.dueAt - now) / DAY_MS))));
 }
 
 const selectClass =
   'rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-stone-600 dark:bg-stone-800';
 
 function WordCard({ word, now }: { word: VocabularyWord; now: number }) {
+  const { t } = useI18n();
   const display = word.lemma ?? word.word;
   return (
     <li className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm dark:border-stone-700 dark:bg-stone-800">
@@ -36,27 +36,27 @@ function WordCard({ word, now }: { word: VocabularyWord; now: number }) {
             {display} <span className="align-middle text-xs font-normal uppercase text-stone-500">{word.language}</span>
           </p>
           {word.lemma && word.lemma.toLowerCase() !== word.word.toLowerCase() && (
-            <p className="text-xs text-stone-500">rencontré sous la forme « {word.word} »</p>
+            <p className="text-xs text-stone-600 dark:text-stone-300">{t.vocabulary.metAs(word.word)}</p>
           )}
         </div>
         <select
           value={word.status}
           onChange={(e) => void setWordStatus(word.id, e.target.value as WordStatus)}
-          aria-label={`Statut de ${display}`}
+          aria-label={t.vocabulary.statusOf(display)}
           className={`rounded-full border bg-transparent px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[word.status]}`}
         >
-          {(Object.keys(STATUS_LABELS) as WordStatus[]).map((status) => (
+          {STATUSES.map((status) => (
             <option key={status} value={status}>
-              {STATUS_LABELS[status]}
+              {t.vocabulary.statuses[status]}
             </option>
           ))}
         </select>
         <button
           onClick={() => {
-            if (window.confirm(`Retirer « ${display} » du vocabulaire ?`)) void removeWord(word.id);
+            if (window.confirm(t.vocabulary.confirmRemove(display))) void removeWord(word.id);
           }}
-          aria-label={`Retirer ${display}`}
-          title="Retirer du vocabulaire"
+          aria-label={t.vocabulary.remove(display)}
+          title={t.vocabulary.removeTitle}
           className="rounded-md px-1.5 text-stone-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
         >
           ✕
@@ -74,13 +74,14 @@ function WordCard({ word, now }: { word: VocabularyWord; now: number }) {
       )}
       <p className="mt-2 text-xs text-stone-500">
         {word.bookTitle && <>📖 {word.bookTitle} · </>}
-        {nextReviewLabel(word, now)}
+        {nextReviewLabel(word, now, t)}
       </p>
     </li>
   );
 }
 
 export default function VocabularyPage() {
+  const { t } = useI18n();
   const words = useLiveQuery(() => db.words.orderBy('createdAt').reverse().toArray(), []);
   const [query, setQuery] = useState('');
   const [language, setLanguage] = useState<'all' | 'fr' | 'en'>('all');
@@ -90,7 +91,7 @@ export default function VocabularyPage() {
   const [now] = useState(() => Date.now());
 
   const books = useMemo(
-    () => [...new Set((words ?? []).map((w) => w.bookTitle).filter((t): t is string => Boolean(t)))].sort(),
+    () => [...new Set((words ?? []).map((w) => w.bookTitle).filter((title): title is string => Boolean(title)))].sort(),
     [words],
   );
 
@@ -104,7 +105,7 @@ export default function VocabularyPage() {
         (!q ||
           w.word.toLowerCase().includes(q) ||
           w.lemma?.toLowerCase().includes(q) ||
-          w.translations.some((t) => t.toLowerCase().includes(q))),
+          w.translations.some((translation) => translation.toLowerCase().includes(q))),
     );
   }, [words, query, language, book, status]);
 
@@ -116,24 +117,24 @@ export default function VocabularyPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <h2 className="mr-auto text-lg font-semibold">
-          Mon vocabulaire <span className="text-stone-500">({words.length})</span>
+          {t.vocabulary.title} <span className="text-stone-600 dark:text-stone-300">({words.length})</span>
         </h2>
         <button
-          onClick={() => downloadTextFile('vocabulaire-lecture.csv', wordsToAnkiCsv(visible), 'text/csv')}
+          onClick={() => downloadTextFile(t.vocabulary.exportFile, wordsToAnkiCsv(visible), 'text/csv')}
           disabled={visible.length === 0}
           className="rounded-lg border border-stone-300 px-4 py-2 text-sm hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:hover:bg-stone-800"
-          title="Fichier CSV à importer dans Anki (Fichier › Importer)"
+          title={t.vocabulary.exportAnkiTitle}
         >
-          ⤓ Exporter pour Anki
+          {t.vocabulary.exportAnki}
         </button>
         <a
           href={ROUTES.review}
           aria-disabled={dueCount === 0}
           className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
-            dueCount === 0 ? 'pointer-events-none bg-stone-400' : 'bg-amber-600 hover:bg-amber-700'
+            dueCount === 0 ? 'pointer-events-none bg-stone-500' : 'bg-amber-700 hover:bg-amber-800'
           }`}
         >
-          Réviser ({dueCount})
+          {t.vocabulary.review(dueCount)}
         </a>
       </div>
 
@@ -142,17 +143,16 @@ export default function VocabularyPage() {
           <p className="text-4xl" aria-hidden>
             🗂️
           </p>
-          <p className="mt-2 font-medium">Ton vocabulaire est vide.</p>
-          <p className="mt-1 text-sm">
-            Pendant la lecture, double-clique sur un mot puis choisis « ☆ Ajouter au vocabulaire ».
-          </p>
+          <p className="mt-2 font-medium">{t.vocabulary.empty}</p>
+          <p className="mt-1 text-sm">{t.vocabulary.emptyHint}</p>
         </div>
       ) : (
         <>
           <div className="mb-4 flex flex-wrap gap-2">
             <input
               type="search"
-              placeholder="Rechercher un mot ou une traduction"
+              placeholder={t.vocabulary.search}
+              aria-label={t.vocabulary.search}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className={`${selectClass} w-64`}
@@ -160,18 +160,23 @@ export default function VocabularyPage() {
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as typeof language)}
-              aria-label="Langue"
+              aria-label={t.vocabulary.language}
               className={selectClass}
             >
-              <option value="all">Toutes les langues</option>
+              <option value="all">{t.vocabulary.allLanguages}</option>
               {(['fr', 'en'] as const).map((l) => (
                 <option key={l} value={l}>
-                  {LANGUAGE_LABELS[l]}
+                  {t.common.languages[l]}
                 </option>
               ))}
             </select>
-            <select value={book} onChange={(e) => setBook(e.target.value)} aria-label="Livre" className={selectClass}>
-              <option value="all">Tous les livres</option>
+            <select
+              value={book}
+              onChange={(e) => setBook(e.target.value)}
+              aria-label={t.vocabulary.book}
+              className={selectClass}
+            >
+              <option value="all">{t.vocabulary.allBooks}</option>
               {books.map((title) => (
                 <option key={title} value={title}>
                   {title}
@@ -181,19 +186,19 @@ export default function VocabularyPage() {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as typeof status)}
-              aria-label="Statut"
+              aria-label={t.vocabulary.status}
               className={selectClass}
             >
-              <option value="all">Tous les statuts</option>
-              {(Object.keys(STATUS_LABELS) as WordStatus[]).map((s) => (
+              <option value="all">{t.vocabulary.allStatuses}</option>
+              {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
+                  {t.vocabulary.statuses[s]}
                 </option>
               ))}
             </select>
           </div>
           {visible.length === 0 ? (
-            <p className="py-12 text-center text-stone-500">Aucun mot ne correspond à ces filtres.</p>
+            <p className="py-12 text-center text-stone-600 dark:text-stone-300">{t.vocabulary.noMatch}</p>
           ) : (
             <ul className="grid gap-3 md:grid-cols-2">
               {visible.map((word) => (

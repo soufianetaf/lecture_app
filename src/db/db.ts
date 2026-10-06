@@ -34,6 +34,8 @@ export interface Settings {
   columnWidth: ColumnWidth;
   /** PDF uniquement : 1 = page ajustée à la largeur. */
   pdfZoom: number;
+  /** Langue de l'interface ; absente = détectée depuis le navigateur. */
+  uiLanguage?: 'fr' | 'en';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -180,6 +182,14 @@ class LectureDB extends Dexie {
     this.version(6).stores({
       words: 'id, &[language+key], bookId, status, dueAt, createdAt',
     });
+    // L'auteur inconnu était enregistré en toutes lettres (« Auteur inconnu ») :
+    // il est désormais vide et traduit à l'affichage.
+    this.version(7).upgrade((tx) =>
+      tx
+        .table('books')
+        .filter((book: Book) => book.author === 'Auteur inconnu')
+        .modify({ author: '' }),
+    );
   }
 }
 

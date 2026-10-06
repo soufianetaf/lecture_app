@@ -98,4 +98,14 @@ describe('formatInterval', () => {
   ])('%i jours → %s', (days, label) => {
     expect(formatInterval(days)).toBe(label);
   });
+
+  it.each([
+    [0, 'in 10 min'],
+    [1, 'tomorrow'],
+    [8, 'in 8 days'],
+    [30, 'in 1 month'],
+    [60, 'in 2 months'],
+  ])('%i days → %s (anglais)', (days, label) => {
+    expect(formatInterval(days, 'en')).toBe(label);
+  });
 });

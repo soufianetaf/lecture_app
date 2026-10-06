@@ -70,10 +70,16 @@ export function reviewForStatus(status: WordStatus, current: ReviewState, now: n
 }
 
 /** « dans 3 jours », « dans 2 mois »… pour annoncer le prochain passage. */
-export function formatInterval(days: number): string {
+export function formatInterval(days: number, language: 'fr' | 'en' = 'fr'): string {
+  const months = Math.round(days / 30);
+  if (language === 'en') {
+    if (days < 1) return 'in 10 min';
+    if (days === 1) return 'tomorrow';
+    if (days < 30) return `in ${days} days`;
+    return months < 12 ? `in ${months} month${months > 1 ? 's' : ''}` : 'in 1 year';
+  }
   if (days < 1) return 'dans 10 min';
   if (days === 1) return 'demain';
   if (days < 30) return `dans ${days} jours`;
-  const months = Math.round(days / 30);
   return months < 12 ? `dans ${months} mois` : 'dans 1 an';
 }

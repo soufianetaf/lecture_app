@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n';
 import type { TocItem } from './types';
 
 interface Props {
@@ -26,11 +27,12 @@ function TocList({ items, depth, onSelect }: { items: TocItem[]; depth: number; 
 }
 
 export default function TocPanel({ toc, onSelect }: Props) {
+  const { t } = useI18n();
   return (
-    <nav aria-label="Table des matières" className="h-full overflow-y-auto p-3">
-      <h2 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide opacity-60">Table des matières</h2>
+    <nav aria-label={t.reader.tocTitle} className="h-full overflow-y-auto p-3">
+      <h2 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide opacity-70">{t.reader.tocTitle}</h2>
       {toc.length === 0 ? (
-        <p className="px-3 text-sm opacity-70">Ce livre n’a pas de table des matières.</p>
+        <p className="px-3 text-sm opacity-80">{t.toc.empty}</p>
       ) : (
         <TocList items={toc} depth={0} onSelect={onSelect} />
       )}

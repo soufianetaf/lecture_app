@@ -50,13 +50,23 @@ describe('cleanSelectionText', () => {
 describe('highlightsToMarkdown', () => {
   it('groupe par chapitre et inclut les notes', () => {
     const anchor = { format: 'epub', cfiRange: 'x' } as const;
-    const markdown = highlightsToMarkdown({ title: 'Le Jardin', author: 'Marie' }, [
-      highlight({ anchor, text: 'Première phrase', label: 'Chapitre 1' }),
-      highlight({ anchor, text: 'Deuxième phrase', label: 'Chapitre 1', note: 'À retenir', color: 'green' }),
-      highlight({ anchor, text: 'Troisième phrase', label: 'Chapitre 2' }),
-    ]);
+    const labels = {
+      author: 'Marie',
+      count: (n: number) => `${n} surlignages`,
+      note: 'Note :',
+      color: (color: string) => (color === 'green' ? 'Vert' : 'Jaune'),
+    };
+    const markdown = highlightsToMarkdown(
+      { title: 'Le Jardin' },
+      [
+        highlight({ anchor, text: 'Première phrase', label: 'Chapitre 1' }),
+        highlight({ anchor, text: 'Deuxième phrase', label: 'Chapitre 1', note: 'À retenir', color: 'green' }),
+        highlight({ anchor, text: 'Troisième phrase', label: 'Chapitre 2' }),
+      ],
+      labels,
+    );
     expect(markdown).toContain('# Le Jardin');
-    expect(markdown).toContain('3 surlignage(s)');
+    expect(markdown).toContain('*Marie* — 3 surlignages');
     expect(markdown.match(/## Chapitre 1/g)).toHaveLength(1);
     expect(markdown).toContain('## Chapitre 2');
     expect(markdown).toContain('> Deuxième phrase\n\n**Note :** À retenir');

@@ -1,4 +1,5 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ContextType, type ErrorInfo, type ReactNode } from 'react';
+import { I18nContext } from '../i18n';
 
 interface Props {
   children: ReactNode;
@@ -20,6 +21,9 @@ interface State {
  * (Les « error boundaries » doivent encore être des composants classe en React.)
  */
 export default class ErrorBoundary extends Component<Props, State> {
+  static contextType = I18nContext;
+  declare context: ContextType<typeof I18nContext>;
+
   state: State = { error: null, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -36,14 +40,15 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.error) return this.props.children;
+    const { t } = this.context;
     return (
       <div role="alert" className={this.props.compact ? 'p-4 text-sm' : 'mx-auto max-w-md p-8 text-center'}>
-        <p className="font-medium">{this.props.message ?? 'Un problème est survenu à l’affichage.'}</p>
+        <p className="font-medium">{this.props.message ?? t.app.displayError}</p>
         <button
           onClick={() => this.setState({ error: null })}
-          className="mt-3 rounded-lg bg-amber-600 px-4 py-1.5 text-sm text-white hover:bg-amber-700"
+          className="mt-3 rounded-lg bg-amber-700 px-4 py-1.5 text-sm text-white hover:bg-amber-800"
         >
-          Réessayer
+          {t.common.retry}
         </button>
       </div>
     );

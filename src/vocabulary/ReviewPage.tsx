@@ -2,24 +2,27 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useState } from 'react';
 import WordInContext from '../components/WordInContext';
 import { db, type VocabularyWord } from '../db/db';
+import { useI18n } from '../i18n';
 import { ROUTES } from '../routes';
 import { advanceQueue, SESSION_SIZE } from '../services/vocabulary/session';
-import { formatInterval, schedule, type Grade } from '../services/vocabulary/srs';
+import { schedule, type Grade } from '../services/vocabulary/srs';
 import { getDueWords, recordReview } from '../services/vocabulary/vocabularyService';
 
-const GRADES: { value: Grade; label: string; key: string; style: string }[] = [
-  { value: 'again', label: 'À revoir', key: '1', style: 'bg-red-600 hover:bg-red-700' },
-  { value: 'hard', label: 'Difficile', key: '2', style: 'bg-orange-500 hover:bg-orange-600' },
-  { value: 'good', label: 'Bien', key: '3', style: 'bg-green-600 hover:bg-green-700' },
-  { value: 'easy', label: 'Facile', key: '4', style: 'bg-sky-600 hover:bg-sky-700' },
+// Couleurs assez foncées pour un texte blanc lisible (contraste WCAG AA).
+const GRADES: { value: Grade; key: string; style: string }[] = [
+  { value: 'again', key: '1', style: 'bg-red-700 hover:bg-red-800' },
+  { value: 'hard', key: '2', style: 'bg-orange-700 hover:bg-orange-800' },
+  { value: 'good', key: '3', style: 'bg-green-700 hover:bg-green-800' },
+  { value: 'easy', key: '4', style: 'bg-sky-700 hover:bg-sky-800' },
 ];
 
 function Card({ word, revealed }: { word: VocabularyWord; revealed: boolean }) {
+  const { t } = useI18n();
   const display = word.lemma ?? word.word;
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm dark:border-stone-700 dark:bg-stone-800">
-      <p className="text-xs uppercase tracking-wide text-stone-500">
-        {word.language === 'fr' ? 'Français' : 'Anglais'}
+      <p className="text-xs uppercase tracking-wide text-stone-600 dark:text-stone-300">
+        {t.common.languages[word.language]}
       </p>
       <p className="mt-2 text-4xl font-semibold">{display}</p>
       {word.context && (
@@ -34,7 +37,7 @@ function Card({ word, revealed }: { word: VocabularyWord; revealed: boolean }) {
             <p className="mx-auto mt-2 max-w-lg text-sm text-stone-600 dark:text-stone-300">{word.definition}</p>
           )}
           {word.translations.length === 0 && !word.definition && (
-            <p className="text-sm text-stone-500">Pas de traduction enregistrée.</p>
+            <p className="text-sm text-stone-600 dark:text-stone-300">{t.review.noTranslation}</p>
           )}
         </div>
       )}
@@ -43,6 +46,7 @@ function Card({ word, revealed }: { word: VocabularyWord; revealed: boolean }) {
 }
 
 function SessionDone({ reviewed, forgotten, now }: { reviewed: number; forgotten: number; now: number }) {
+  const { t } = useI18n();
   // Prochain mot à réviser, pour dire quand revenir.
   const next = useLiveQuery(() => db.words.orderBy('dueAt').first(), []);
   return (
@@ -50,31 +54,27 @@ function SessionDone({ reviewed, forgotten, now }: { reviewed: number; forgotten
       <p className="text-4xl" aria-hidden>
         {reviewed > 0 ? '🎉' : '✅'}
       </p>
-      <p className="mt-2 text-lg font-semibold">
-        {reviewed > 0 ? 'Séance terminée !' : 'Rien à réviser pour le moment.'}
-      </p>
+      <p className="mt-2 text-lg font-semibold">{reviewed > 0 ? t.review.done : t.review.nothingDue}</p>
       {reviewed > 0 && (
-        <p className="mt-1 text-stone-600 dark:text-stone-300">
-          {reviewed} réponse{reviewed > 1 ? 's' : ''}, dont {forgotten} mot{forgotten > 1 ? 's' : ''} à revoir.
-        </p>
+        <p className="mt-1 text-stone-600 dark:text-stone-300">{t.review.summary(reviewed, forgotten)}</p>
       )}
       {next && next.dueAt > now && (
-        <p className="mt-1 text-sm text-stone-500">
-          Prochaine révision le{' '}
-          {new Date(next.dueAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}.
+        <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">
+          {t.review.nextSession(t.format.longDate(new Date(next.dueAt)))}
         </p>
       )}
       <a
         href={ROUTES.vocabulary}
-        className="mt-4 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700"
+        className="mt-4 inline-block rounded-lg bg-amber-700 px-4 py-2 text-sm text-white hover:bg-amber-800"
       >
-        Retour au vocabulaire
+        {t.review.backToVocabulary}
       </a>
     </div>
   );
 }
 
 export default function ReviewPage() {
+  const { t } = useI18n();
   // File figée en début de séance : les mots ajoutés pendant la séance attendront la prochaine.
   const [queue, setQueue] = useState<VocabularyWord[] | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -138,19 +138,15 @@ export default function ReviewPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [current, revealed, answer]);
 
-  if (queue === null) return error ? <p className="text-red-600">Impossible de charger les mots à réviser.</p> : null;
+  if (queue === null) return error ? <p className="text-red-600">{t.review.loadFailed}</p> : null;
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-4 flex items-center justify-between text-sm text-stone-500">
+      <div className="mb-4 flex items-center justify-between text-sm text-stone-600 dark:text-stone-300">
         <a href={ROUTES.vocabulary} className="hover:underline">
-          ← Vocabulaire
+          {t.review.back}
         </a>
-        {current && (
-          <span>
-            {queue.length} carte{queue.length > 1 ? 's' : ''} restante{queue.length > 1 ? 's' : ''}
-          </span>
-        )}
+        {current && <span aria-live="polite">{t.review.remaining(queue.length)}</span>}
       </div>
 
       {!current ? (
@@ -164,10 +160,10 @@ export default function ReviewPage() {
                 onClick={() => setRevealed(true)}
                 className="w-full rounded-xl bg-stone-800 py-3 text-white hover:bg-stone-900 dark:bg-stone-200 dark:text-stone-900"
               >
-                Afficher la réponse <span className="text-xs opacity-60">(Espace)</span>
+                {t.review.showAnswer} <span className="text-xs opacity-80">{t.review.spaceKey}</span>
               </button>
             ) : (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Ta réponse">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t.review.yourAnswer}>
                 {GRADES.map((grade) => (
                   <button
                     key={grade.value}
@@ -175,9 +171,9 @@ export default function ReviewPage() {
                     disabled={busy}
                     className={`rounded-xl px-3 py-2 text-white disabled:opacity-50 ${grade.style}`}
                   >
-                    <span className="block font-medium">{grade.label}</span>
+                    <span className="block font-medium">{t.review.grades[grade.value]}</span>
                     <span className="block text-xs opacity-80">
-                      {formatInterval(schedule(current, grade.value, now).intervalDays)} · {grade.key}
+                      {t.format.interval(schedule(current, grade.value, now).intervalDays)} · {grade.key}
                     </span>
                   </button>
                 ))}
@@ -185,7 +181,7 @@ export default function ReviewPage() {
             )}
             {error && (
               <p role="alert" className="mt-2 text-sm text-red-600">
-                La réponse n’a pas été enregistrée. Réessaie.
+                {t.review.saveFailed}
               </p>
             )}
           </div>
