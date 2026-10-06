@@ -2,8 +2,11 @@ import ePub from 'epubjs';
 import { db, type Book, type BookFormat, type BookLanguage } from '../db/db';
 import { detectLanguage, normalizeLanguage } from './language';
 import { pdfjs } from './pdf';
+import { buildEpub, decodeText, splitChapters } from './txt/txtToEpub';
 
-export class ImportError extends Error {}
+import { ImportError } from './importErrors';
+
+export { ImportError };
 
 interface ExtractedInfo {
   title?: string;
@@ -15,23 +18,29 @@ interface ExtractedInfo {
 const MIN_TEXT_LENGTH = 200;
 const COVER_WIDTH = 320;
 
-function detectFormat(file: File): BookFormat | null {
+/** Format du fichier importé ; un TXT est converti en EPUB avant stockage. */
+type SourceFormat = BookFormat | 'txt';
+
+function detectFormat(file: File): SourceFormat | null {
   const name = file.name.toLowerCase();
   if (name.endsWith('.pdf') || file.type === 'application/pdf') return 'pdf';
   if (name.endsWith('.epub') || file.type === 'application/epub+zip') return 'epub';
+  if (name.endsWith('.txt') || file.type === 'text/plain') return 'txt';
   return null;
 }
 
+/** « le-meunier.txt » → « Le meunier ». */
 function titleFromFileName(name: string): string {
-  return name
-    .replace(/\.(pdf|epub)$/i, '')
+  const title = name
+    .replace(/\.(pdf|epub|txt)$/i, '')
     .replace(/[_-]+/g, ' ')
     .trim();
+  return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new ImportError(message)), ms);
+    const timer = setTimeout(() => reject(onTimeout()), ms);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -52,7 +61,7 @@ async function extractPdf(file: File): Promise<ExtractedInfo> {
   try {
     pdf = await loadingTask.promise;
   } catch {
-    throw new ImportError('Ce PDF est illisible ou protégé par mot de passe.');
+    throw new ImportError('pdfUnreadable');
   }
 
   try {
@@ -68,9 +77,7 @@ async function extractPdf(file: File): Promise<ExtractedInfo> {
       text += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + ' ';
     }
     if (text.replace(/\s/g, '').length < MIN_TEXT_LENGTH) {
-      throw new ImportError(
-        'Ce PDF semble scanné : il ne contient pas de texte sélectionnable. Il ne peut pas être lu pour l’instant.',
-      );
+      throw new ImportError('scanned');
     }
 
     const firstPage = await pdf.getPage(1);
@@ -101,11 +108,10 @@ async function extractPdf(file: File): Promise<ExtractedInfo> {
 async function extractEpub(file: File): Promise<ExtractedInfo> {
   const book = ePub(await file.arrayBuffer());
   try {
-    const metadata = await withTimeout(book.loaded.metadata, 15000, 'Cet EPUB est illisible ou mal formé.').catch(
-      (error) => {
-        throw error instanceof ImportError ? error : new ImportError('Cet EPUB est illisible ou mal formé.');
-      },
-    );
+    const unreadable = () => new ImportError('epubUnreadable');
+    const metadata = await withTimeout(book.loaded.metadata, 15000, unreadable).catch((error) => {
+      throw error instanceof ImportError ? error : unreadable();
+    });
 
     let cover: Blob | undefined;
     try {
@@ -140,27 +146,52 @@ async function extractEpub(file: File): Promise<ExtractedInfo> {
   }
 }
 
-/** Importe un fichier PDF ou EPUB dans la bibliothèque. */
+/** Convertit un TXT en EPUB : il profite ensuite de tout le lecteur EPUB. */
+async function convertTxt(file: File): Promise<{ epub: Blob; info: ExtractedInfo }> {
+  const text = decodeText(await file.arrayBuffer());
+  if (!text.trim()) throw new ImportError('emptyText');
+  const title = titleFromFileName(file.name);
+  const language = detectLanguage(text.slice(0, 5000));
+  const epub = await buildEpub({
+    title,
+    author: '',
+    language: language === 'unknown' ? 'und' : language,
+    // Les parties générées sont nommées dans la langue du livre.
+    chapters: splitChapters(text, title, language === 'en' ? 'Part' : 'Partie'),
+  });
+  return { epub, info: { title, language } };
+}
+
+/** Importe un fichier PDF, EPUB ou TXT dans la bibliothèque. */
 export async function importBook(file: File): Promise<Book> {
   const format = detectFormat(file);
   if (!format) {
-    throw new ImportError('Format non pris en charge : seuls les fichiers PDF et EPUB sont acceptés.');
+    throw new ImportError('unsupported');
   }
 
   const duplicate = await db.books.where({ fileName: file.name, size: file.size }).first();
   if (duplicate) {
-    throw new ImportError(`« ${duplicate.title} » est déjà dans la bibliothèque.`);
+    throw new ImportError('duplicate', duplicate.title);
   }
 
-  const info = format === 'pdf' ? await extractPdf(file) : await extractEpub(file);
+  let stored: Blob = file;
+  let info: ExtractedInfo;
+  if (format === 'txt') {
+    const converted = await convertTxt(file);
+    stored = converted.epub;
+    info = converted.info;
+  } else {
+    info = format === 'pdf' ? await extractPdf(file) : await extractEpub(file);
+  }
 
   const book: Book = {
     id: crypto.randomUUID(),
     title: info.title || titleFromFileName(file.name),
-    author: info.author || 'Auteur inconnu',
+    // Vide si inconnu : le libellé « Auteur inconnu » est traduit à l'affichage.
+    author: info.author ?? '',
     language: info.language,
-    format,
-    file,
+    format: format === 'pdf' ? 'pdf' : 'epub',
+    file: stored,
     fileName: file.name,
     size: file.size,
     cover: info.cover,

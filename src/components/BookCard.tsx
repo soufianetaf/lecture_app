@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { db, type Book, type BookLanguage, type Progress } from '../db/db';
 import { deleteBook } from '../services/bookService';
+import { displayAuthor } from '../services/errorMessages';
 import { formatDuration, formatPercentage, isFinished } from '../services/progress';
 import { ROUTES } from '../routes';
 import ProgressBar from './ProgressBar';
@@ -44,7 +45,7 @@ export default function BookCard({ book, progress }: { book: Book; progress?: Pr
           ) : (
             <div className="flex h-full flex-col justify-between bg-gradient-to-br from-amber-700 to-stone-800 p-4 text-white">
               <span className="line-clamp-5 font-serif text-lg leading-snug">{book.title}</span>
-              <span className="text-xs opacity-80">{book.author}</span>
+              <span className="text-xs opacity-80">{displayAuthor(book.author)}</span>
             </div>
           )}
         </a>
@@ -72,8 +73,8 @@ export default function BookCard({ book, progress }: { book: Book; progress?: Pr
         </a>
       </h3>
       <div className="mt-1 flex items-center gap-2 text-xs text-stone-500">
-        <span className="line-clamp-1 flex-1" title={book.author}>
-          {book.author}
+        <span className="line-clamp-1 flex-1" title={displayAuthor(book.author)}>
+          {displayAuthor(book.author)}
         </span>
         <select
           value={book.language}

@@ -1,12 +1,24 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import Library from './components/Library';
 import { db } from './db/db';
-import Reader from './reader/Reader';
 import { parseRoute, ROUTES, type Route } from './routes';
-import ReviewPage from './vocabulary/ReviewPage';
-import VocabularyPage from './vocabulary/VocabularyPage';
+
+// Écrans chargés à la demande : la bibliothèque s'affiche sans attendre
+// pdf.js et epub.js, utilisés seulement par le lecteur.
+const Reader = lazy(() => import('./reader/Reader'));
+const VocabularyPage = lazy(() => import('./vocabulary/VocabularyPage'));
+const ReviewPage = lazy(() => import('./vocabulary/ReviewPage'));
+const SettingsPage = lazy(() => import('./settings/SettingsPage'));
+
+function Loading() {
+  return (
+    <p role="status" className="p-8 text-center text-stone-500">
+      Chargement…
+    </p>
+  );
+}
 
 function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
@@ -38,7 +50,9 @@ export default function App() {
   if (route.name === 'reader') {
     return (
       <ErrorBoundary resetKey={route.bookId} message="Le lecteur a rencontré un problème.">
-        <Reader key={route.bookId} bookId={route.bookId} onClose={() => (window.location.hash = ROUTES.library)} />
+        <Suspense fallback={<Loading />}>
+          <Reader key={route.bookId} bookId={route.bookId} onClose={() => (window.location.hash = ROUTES.library)} />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -66,14 +80,20 @@ export default function App() {
                 <span className="ml-1.5 rounded-full bg-amber-600 px-1.5 py-0.5 text-xs text-white">{dueCount}</span>
               )}
             </NavLink>
+            <NavLink href={ROUTES.settings} active={route.name === 'settings'}>
+              Paramètres
+            </NavLink>
           </nav>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">
         <ErrorBoundary resetKey={route.name}>
-          {route.name === 'library' && <Library />}
-          {route.name === 'vocabulary' && <VocabularyPage />}
-          {route.name === 'review' && <ReviewPage />}
+          <Suspense fallback={<Loading />}>
+            {route.name === 'library' && <Library />}
+            {route.name === 'vocabulary' && <VocabularyPage />}
+            {route.name === 'review' && <ReviewPage />}
+            {route.name === 'settings' && <SettingsPage />}
+          </Suspense>
         </ErrorBoundary>
       </main>
     </div>

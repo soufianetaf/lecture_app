@@ -9,6 +9,7 @@ describe('parseRoute', () => {
     ['#/livre/abc-123', { name: 'reader', bookId: 'abc-123' }],
     ['#/vocabulaire', { name: 'vocabulary' }],
     ['#/revision', { name: 'review' }],
+    ['#/parametres', { name: 'settings' }],
   ])('%s', (hash, route) => {
     expect(parseRoute(hash)).toEqual(route);
   });

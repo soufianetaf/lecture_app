@@ -162,6 +162,23 @@ ${body}
 });
 writeFileSync(new URL('le-jardin-oublie.epub', outDir), await zip.generateAsync({ type: 'nodebuffer' }));
 
-writeFileSync(new URL('notes.txt', outDir), 'Ceci n’est pas un livre.');
+// Format non pris en charge : doit être refusé à l'import.
+writeFileSync(new URL('notes.docx', outDir), 'Ceci n’est pas un livre.');
+
+// Texte brut en Windows-1252 (ancien encodage français), avec titres de chapitre.
+const contes = [
+  'CHAPITRE I',
+  '',
+  'Le vieux meunier vivait seul au bord de la rivière. Chaque matin, il',
+  'regardait l’eau couler sous la roue du moulin et pensait à son fils parti',
+  'à la ville.',
+  '',
+  'Un jour, une lettre arriva. Elle était écrite d’une main tremblante.',
+  '',
+  'CHAPITRE II',
+  '',
+  'Le fils revint à l’automne, quand les feuilles des peupliers étaient déjà jaunes.',
+].join('\r\n');
+writeFileSync(new URL('le-meunier.txt', outDir), Buffer.from(contes.replaceAll('’', "'"), 'latin1'));
 
 console.log('Fichiers de test créés dans fixtures/');

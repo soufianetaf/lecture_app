@@ -1,12 +1,16 @@
-/** Propose un fichier texte au téléchargement (export local, aucun envoi réseau). */
-export function downloadTextFile(fileName: string, content: string, mimeType = 'text/plain'): void {
-  const url = URL.createObjectURL(new Blob([content], { type: `${mimeType};charset=utf-8` }));
+/** Propose un fichier au téléchargement (export local, aucun envoi réseau). */
+export function downloadBlob(fileName: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
   link.click();
   // Laisse le temps au navigateur de lancer le téléchargement.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadTextFile(fileName: string, content: string, mimeType = 'text/plain'): void {
+  downloadBlob(fileName, new Blob([content], { type: `${mimeType};charset=utf-8` }));
 }
 
 /** Nom de fichier sûr à partir d'un titre. */

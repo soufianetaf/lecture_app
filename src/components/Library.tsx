@@ -1,7 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useRef, useState, type DragEvent } from 'react';
 import { db } from '../db/db';
-import { importBook, ImportError } from '../services/importBook';
+import { importErrorMessage } from '../services/errorMessages';
+import { ImportError } from '../services/importErrors';
 import BookCard from './BookCard';
 
 type ImportStatus = { id: string; fileName: string; state: 'loading' | 'done' | 'error'; message?: string };
@@ -42,12 +43,16 @@ export default function Library() {
       const id = crypto.randomUUID();
       setImports((list) => [...list, { id, fileName: file.name, state: 'loading' }]);
       try {
+        // Chargé à la demande : pdf.js et epub.js (≈1 Mo) ne ralentissent pas l'ouverture de la bibliothèque.
+        const { importBook } = await import('../services/importBook');
         const book = await importBook(file);
         updateImport(id, { state: 'done', message: `« ${book.title} » ajouté.` });
         setTimeout(() => setImports((list) => list.filter((item) => item.id !== id)), 4000);
       } catch (error) {
         const message =
-          error instanceof ImportError ? error.message : 'Erreur inattendue pendant l’import de ce fichier.';
+          error instanceof ImportError
+            ? importErrorMessage(error.code, error.detail)
+            : 'Erreur inattendue pendant l’import de ce fichier.';
         if (!(error instanceof ImportError)) console.error(error);
         updateImport(id, { state: 'error', message });
       }
@@ -102,7 +107,7 @@ export default function Library() {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.epub,application/pdf,application/epub+zip"
+          accept=".pdf,.epub,.txt,application/pdf,application/epub+zip,text/plain"
           multiple
           hidden
           onChange={(e) => {
@@ -150,7 +155,7 @@ export default function Library() {
           <span className="text-4xl" aria-hidden>
             📚
           </span>
-          <span className="font-medium">Glisse un PDF ou un EPUB ici</span>
+          <span className="font-medium">Glisse un PDF, un EPUB ou un TXT ici</span>
           <span className="text-sm">ou clique pour choisir un fichier</span>
         </button>
       )}
@@ -168,7 +173,7 @@ export default function Library() {
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center bg-amber-500/15 backdrop-blur-sm">
           <div className="rounded-2xl border-2 border-dashed border-amber-600 bg-white px-10 py-8 text-lg font-medium text-amber-800 dark:bg-stone-800 dark:text-amber-300">
-            Dépose tes livres PDF ou EPUB
+            Dépose tes livres PDF, EPUB ou TXT
           </div>
         </div>
       )}

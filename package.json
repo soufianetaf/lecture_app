@@ -20,6 +20,7 @@
     "dexie-react-hooks": "^4.4.0",
     "epubjs": "^0.3.93",
     "franc-min": "^6.2.0",
+    "jszip": "^3.10.2",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
@@ -35,6 +36,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
+    "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.0.3"
   }
 }

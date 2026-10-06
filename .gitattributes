@@ -6,3 +6,6 @@
 *.epub binary
 *.png binary
 *.jpg binary
+
+# Fixtures texte : encodage et fins de ligne d'origine conservés (cas de test).
+fixtures/*.txt binary
